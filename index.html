@@ -409,6 +409,18 @@
   }
   .item button:disabled { opacity: .35; cursor: not-allowed; }
   .item.equipped { border-color: var(--chip); }
+  .item { position: relative; }
+  .item.onsale { border-color: rgba(95,214,138,.55); }
+  .item button s { opacity: .55; font-weight: 400; margin-left: 4px; }
+  .saletag { position: absolute; top: -8px; right: -6px; z-index: 1; padding: 2px 7px; border-radius: 9px; background: var(--win); color: #0c2a17; font: 700 11px/1.4 var(--mono); }
+  .shoprow { display: grid; grid-template-columns: minmax(150px, 1fr) 3fr; gap: 14px; }
+  .shopsec { margin-bottom: 14px; }
+  .shopsec .shop { margin-top: 10px; }
+  .shophead { font-size: 12px; color: var(--text-dim); }
+  .shophead strong { color: var(--text); font-size: 13px; margin-right: 4px; }
+  .shophead .sub { display: block; margin-top: 2px; }
+  .shopsec.coll { padding: 12px; border-radius: 10px; background: linear-gradient(135deg, rgba(232,197,71,.10), rgba(232,197,71,.02)); border: 1px solid rgba(232,197,71,.3); }
+  @media (max-width: 620px) { .shoprow { grid-template-columns: 1fr; gap: 0; } }
   .vaultbal { font: 650 26px/1.1 var(--mono); color: var(--chip); }
   .vaultbal span { font: 400 12px system-ui, sans-serif; color: var(--text-dim); }
   .vaultctl { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -605,7 +617,7 @@
     </div>
     <div class="panel" style="margin-top:14px">
       <h3>Shop &mdash; cosmetics only</h3>
-      <div class="shop" id="shop"></div>
+      <div id="shop"></div>
     </div>
     <div class="grid2">
       <div class="panel">
@@ -2344,6 +2356,12 @@ function renderHome() {
   for (const e of ECON.activeEvents(t)) {
     todo.push(`<div class="item2"><span class="ic">${NOTE_ICON.event}</span><div class="tx"><strong>${e.name}</strong>${e.desc}</div></div>`);
   }
+  const cyc = ECON.shopCycle(t), deal = ECON.SHOP_BY_ID[cyc.deal];
+  if (!S.econ.owned.includes(deal.id)) {
+    todo.push(`<div class="item2"><span class="ic">${NOTE_ICON.chips}</span><div class="tx"><strong>Deal of the Day</strong>` +
+      `${deal.name} ${deal.kind}, ${ECON.shopPrice(deal.id, t).price.toLocaleString()} chips (40% off). Collection this week: ${cyc.collection.name}.</div>` +
+      `<button class="btn-sm ghost" data-go="rewards">Shop</button></div>`);
+  }
   if (!todo.length) {
     todo.push(`<div class="none">All caught up. Next Bonus Wheel spin in ${fmtWait(bonusWait)}.</div>`);
   }
@@ -2721,6 +2739,19 @@ function econCheckTimers() {
     if (evs.length > 20) evs.shift();
     notify('event', `${e.name} is on`, e.desc, { type: 'go', tab: 'home' });
   }
+  // Shop: today's deal (if you don't own it) and a new collection each week.
+  const cyc = ECON.shopCycle(t);
+  const dealKey = 'deal:' + day, collKey = 'coll:' + ECON.weekIndex(t);
+  if (!evs.includes(dealKey)) {
+    evs.push(dealKey);
+    const it = ECON.SHOP_BY_ID[cyc.deal], p = ECON.shopPrice(cyc.deal, t);
+    if (!S.econ.owned.includes(it.id)) notify('chips', 'Deal of the Day', `${it.name} (${it.kind}) is 40% off: ${p.price.toLocaleString()} chips today.`, { type: 'go', tab: 'rewards' });
+  }
+  if (!evs.includes(collKey)) {
+    evs.push(collKey);
+    notify('event', `New collection: ${cyc.collection.name}`, `${cyc.collection.items.map(i => i.name).join(', ')}. In the shop this week only.`, { type: 'go', tab: 'rewards' });
+  }
+  while (evs.length > 20) evs.shift();
   if (!econRescueReady()) S.econ.seen.rescue = false;
   save();
 }
@@ -2847,11 +2878,48 @@ function econVault(amount) {
 
 function econBuy(id) {
   const it = ECON.SHOP_BY_ID[id];
-  if (!it || S.econ.owned.includes(id) || S.chips < it.price) return false;
-  econGrant('shop', -it.price);
+  const p = ECON.shopPrice(id, now());   // today's price, or null if not in rotation
+  if (!it || !p || S.econ.owned.includes(id) || S.chips < p.price) return false;
+  econGrant('shop', -p.price);
   S.econ.owned.push(id);
   econEquip(id);
   return true;
+}
+
+/** One shop card. `p` is today's price (ECON.shopPrice), null if out of rotation. */
+function shopItemHTML(it, p) {
+  const owned = S.econ.owned.includes(it.id), eq = S.econ.equipped[it.kind] === it.id;
+  const sw = it.kind === 'title'
+    ? `<div class="sw" style="background:rgba(255,255,255,.06);font-style:italic">${it.text || '&mdash;'}</div>`
+    : `<div class="sw" style="background:${it.kind === 'back'
+        ? `repeating-linear-gradient(45deg, ${it.colors[0]} 0 6px, ${it.colors[1]} 6px 12px)`
+        : `radial-gradient(ellipse at 50% 0%, ${it.colors[0]}, ${it.colors[1]})`}"></div>`;
+  const tag = p && p.off ? `<span class="saletag">-${Math.round(p.off * 100)}%</span>` : '';
+  const btn = eq ? '<button disabled>Equipped</button>'
+    : owned ? `<button data-equip="${it.id}">Equip</button>`
+    : !p ? '<button disabled>Not in rotation</button>'
+    : `<button data-buy="${it.id}" ${S.chips < p.price ? 'disabled' : ''}>Buy ${p.price.toLocaleString()}` +
+      (p.off ? ` <s>${p.base.toLocaleString()}</s>` : '') + '</button>';
+  return `<div class="item${eq ? ' equipped' : ''}${p && p.off ? ' onsale' : ''}">${tag}${sw}<div>${it.name} <span style="color:#667">${it.kind}</span></div>${btn}</div>`;
+}
+
+function shopHTML(t) {
+  const c = ECON.shopCycle(t);
+  const item = id => ECON.SHOP_BY_ID[id];
+  const card = it => shopItemHTML(it, ECON.shopPrice(it.id, t));
+  const featured = new Set([c.deal, ...c.spotlight, ...c.collection.items.map(i => i.id)]);
+  return '<div class="shoprow">' +
+      `<div class="shopsec deal"><div class="shophead"><strong>Deal of the Day</strong> 40% off &middot; ends in ${fmtWait(c.dealEnds - t)}</div>` +
+      `<div class="shop">${card(item(c.deal))}</div></div>` +
+      `<div class="shopsec"><div class="shophead"><strong>Weekly Spotlight</strong> 25% off &middot; ends in ${fmtWait(c.weekEnds - t)}</div>` +
+      `<div class="shop">${c.spotlight.map(id => card(item(id))).join('')}</div></div>` +
+    '</div>' +
+    `<div class="shopsec coll"><div class="shophead"><strong>Rotating Collection: ${c.collection.name}</strong> ` +
+      `only this week &middot; leaves in ${fmtWait(c.collectionEnds - t)} &middot; next up: ${c.next.name}. ` +
+      `<span class="sub">Collections return every ${ECON.COLLECTIONS.length} weeks; anything you buy is yours for good.</span></div>` +
+      `<div class="shop">${c.collection.items.map(card).join('')}</div></div>` +
+    '<div class="shopsec"><div class="shophead"><strong>Everything else</strong></div>' +
+      `<div class="shop">${ECON.SHOP.filter(it => !featured.has(it.id) && (!it.collection || S.econ.owned.includes(it.id))).map(card).join('')}</div></div>`;
 }
 
 function econEquip(id) {
@@ -2889,6 +2957,7 @@ function econRenderHeader() {
 
 function fmtWait(ms) {
   const m = Math.ceil(ms / 60000);
+  if (m >= 48 * 60) return `${Math.floor(m / 1440)}d ${Math.floor(m % 1440 / 60)}h`;
   return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
 }
 
@@ -2974,18 +3043,7 @@ function econRenderRewards() {
     '<div class="hint">Same calendar for everyone (your local time). Events add promo chips on top; they never change a game\'s cards or paytables.</div>';
 
   // Shop
-  $('shop').innerHTML = ECON.SHOP.map(it => {
-    const owned = S.econ.owned.includes(it.id), eq = S.econ.equipped[it.kind] === it.id;
-    const sw = it.kind === 'title'
-      ? `<div class="sw" style="background:rgba(255,255,255,.06);font-style:italic">${it.text || '&mdash;'}</div>`
-      : `<div class="sw" style="background:${it.kind === 'back'
-          ? `repeating-linear-gradient(45deg, ${it.colors[0]} 0 6px, ${it.colors[1]} 6px 12px)`
-          : `radial-gradient(ellipse at 50% 0%, ${it.colors[0]}, ${it.colors[1]})`}"></div>`;
-    const btn = eq ? '<button disabled>Equipped</button>'
-      : owned ? `<button data-equip="${it.id}">Equip</button>`
-      : `<button data-buy="${it.id}" ${S.chips < it.price ? 'disabled' : ''}>Buy ${it.price.toLocaleString()}</button>`;
-    return `<div class="item${eq ? ' equipped' : ''}">${sw}<div>${it.name} <span style="color:#667">${it.kind}</span></div>${btn}</div>`;
-  }).join('');
+  $('shop').innerHTML = shopHTML(t);
   if ($('shop').querySelectorAll) {
     $('shop').querySelectorAll('[data-buy]').forEach(b => { b.onclick = () => { econBuy(b.dataset.buy); }; });
     $('shop').querySelectorAll('[data-equip]').forEach(b => { b.onclick = () => { econEquip(b.dataset.equip); }; });

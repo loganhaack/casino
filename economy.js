@@ -377,7 +377,91 @@
     { id: 'title-whale',   kind: 'title', name: 'Whale',        price: 2500000, text: 'Whale' },
     { id: 'title-legend',  kind: 'title', name: 'Legend',       price: 10000000, text: 'Legend' },
   ];
+  /* -------------------------------------------------------------------------
+     ROTATING SHOP. Deterministic from the local date (like events and quests),
+     so friends see the same shop. Three layers:
+       - Deal of the Day: one regular item at 40% off, new at midnight.
+       - Weekly Spotlight: three regular items at 25% off, new each Monday.
+       - Rotating Collection: a themed set only on sale during its week. The
+         collections cycle in a fixed order, so every one comes back every
+         COLLECTIONS.length weeks: nothing is gone for good.
+     Owned items stay owned. Sale prices are whole chips, multiples of 50.
+     Cosmetics only, same prices for everyone: nothing here touches play.
+     ------------------------------------------------------------------------- */
+  const COLLECTIONS = [
+    { id: 'neon', name: 'Neon Nights', items: [
+      { id: 'felt-neon',  kind: 'felt',  name: 'Neon Strip',  price: 30000, colors: ['#0d4a5a', '#06161f'] },
+      { id: 'back-neon',  kind: 'back',  name: 'Neon Grid',   price: 20000, colors: ['#d1349b', '#2f2fb8'] },
+      { id: 'title-owl',  kind: 'title', name: 'Night Owl',   price: 25000, text: 'Night Owl' },
+    ] },
+    { id: 'lodge', name: 'Autumn Lodge', items: [
+      { id: 'felt-oak',   kind: 'felt',  name: 'Oak Lodge',   price: 30000, colors: ['#6a4320', '#2f1d0c'] },
+      { id: 'back-maple', kind: 'back',  name: 'Maple',       price: 20000, colors: ['#c2551f', '#7d2e0e'] },
+      { id: 'title-fire', kind: 'title', name: 'Fireside',    price: 25000, text: 'Fireside' },
+    ] },
+    { id: 'ocean', name: 'Ocean Deep', items: [
+      { id: 'felt-reef',  kind: 'felt',  name: 'Reef',        price: 30000, colors: ['#0e5a6b', '#06272f'] },
+      { id: 'back-wave',  kind: 'back',  name: 'Wave',        price: 20000, colors: ['#2a8fbf', '#14506e'] },
+      { id: 'title-diver', kind: 'title', name: 'Deep Diver', price: 25000, text: 'Deep Diver' },
+    ] },
+    { id: 'court', name: 'Royal Court', items: [
+      { id: 'felt-ermine', kind: 'felt', name: 'Ermine',      price: 30000, colors: ['#3b2d5c', '#16102a'] },
+      { id: 'back-crown', kind: 'back',  name: 'Crown',       price: 20000, colors: ['#b8912a', '#4a1f5c'] },
+      { id: 'title-royal', kind: 'title', name: 'Royalty',    price: 25000, text: 'Royalty' },
+    ] },
+  ];
+  for (const c of COLLECTIONS) for (const it of c.items) { it.collection = c.id; SHOP.push(it); }
   const SHOP_BY_ID = Object.fromEntries(SHOP.map(s => [s.id, s]));
+  const DEAL_OFF = 0.40, SPOTLIGHT_OFF = 0.25;
+
+  /** Monday 00:00 (local) of the week containing `date`. */
+  function weekStart(date) {
+    const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    return d;
+  }
+  /** Whole weeks since a fixed Monday, counted by calendar date (DST-proof). */
+  function weekIndex(date) {
+    const m = weekStart(date);
+    return Math.round((Date.UTC(m.getFullYear(), m.getMonth(), m.getDate()) - Date.UTC(2024, 0, 1)) / (7 * 86400000));
+  }
+  const salePrice = (price, off) => Math.max(50, Math.round(price * (1 - off) / 50) * 50);
+
+  /** Everything on sale at `date`: same answer on every device for the same local date. */
+  function shopCycle(date) {
+    const wk = weekIndex(date);
+    const cIdx = ((wk % COLLECTIONS.length) + COLLECTIONS.length) % COLLECTIONS.length;
+    const regular = SHOP.filter(s => !s.collection && s.price > 0);
+    const wr = mulberry32(seedFrom('spotlight|' + wk));
+    const pool = regular.slice(), spotlight = [];
+    while (spotlight.length < 3 && pool.length) spotlight.push(pool.splice(Math.floor(wr() * pool.length), 1)[0].id);
+    const dr = mulberry32(seedFrom('deal|' + dayKey(date)));
+    const dealPool = regular.filter(s => !spotlight.includes(s.id));
+    const deal = dealPool[Math.floor(dr() * dealPool.length)].id;
+    const start = weekStart(date);
+    const ends = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 7);
+    const tomorrow = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
+    return {
+      deal, dealOff: DEAL_OFF, dealEnds: tomorrow,
+      spotlight, spotlightOff: SPOTLIGHT_OFF, weekEnds: ends,
+      collection: COLLECTIONS[cIdx], collectionEnds: ends,
+      next: COLLECTIONS[(cIdx + 1) % COLLECTIONS.length],
+    };
+  }
+
+  /**
+   * What `id` costs at `date`: { price, base, off, why } or null if it can't
+   * be bought right now (a collection item outside its week).
+   */
+  function shopPrice(id, date) {
+    const it = SHOP_BY_ID[id];
+    if (!it) return null;
+    const c = shopCycle(date);
+    if (it.collection && it.collection !== c.collection.id) return null;
+    if (id === c.deal) return { price: salePrice(it.price, c.dealOff), base: it.price, off: c.dealOff, why: 'deal' };
+    if (c.spotlight.includes(id)) return { price: salePrice(it.price, c.spotlightOff), base: it.price, off: c.spotlightOff, why: 'spotlight' };
+    return { price: it.price, base: it.price, off: 0, why: it.collection ? 'collection' : '' };
+  }
 
   const ECON = {
     xpToNext, levelFromXp, xpForRound, QUEST_XP, TIERS, tierIndex,
@@ -386,7 +470,7 @@
     EVENTS, activeEvents, isActive, upcomingEvents, promoFor,
     QUESTS, QUEST_CHIPS, dayKey, dailyQuests, questText, advanceQuest, questReward,
     VAULT, vaultInterest, vaultAccrue, vaultMove,
-    SHOP, SHOP_BY_ID,
+    SHOP, SHOP_BY_ID, COLLECTIONS, shopCycle, shopPrice, weekIndex,
   };
 
   if (typeof module === 'object' && module.exports) module.exports = ECON;

@@ -181,6 +181,27 @@ check('Quest Rush doubles quest chips', [ECON.questReward(1, dateOnWeekday(1, 9)
 ok('shop ids are unique', new Set(ECON.SHOP.map(s => s.id)).size === ECON.SHOP.length);
 ok('every cosmetic kind has a free default', ['felt', 'back', 'title'].every(k => ECON.SHOP.some(s => s.kind === k && s.price === 0)));
 ok('shop prices are whole chips', ECON.SHOP.every(s => Number.isInteger(s.price) && s.price >= 0));
+// Rotating shop
+{
+  const days = [];
+  for (let i = 0; i < 7 * 12; i++) days.push(new Date(2026, 10, 2 + i, 12));   // 12 weeks from a Monday
+  const cyc = days.map(d => ECON.shopCycle(d));
+  check('same date, same shop (deterministic)', JSON.stringify(ECON.shopCycle(new Date(2026, 10, 18, 9))), JSON.stringify(ECON.shopCycle(new Date(2026, 10, 18, 21))));
+  ok('deal of the day changes from day to day', new Set(cyc.slice(0, 14).map(c => c.deal)).size > 5);
+  ok('spotlight is fixed within a week', cyc.slice(0, 7).every(c => c.spotlight.join() === cyc[0].spotlight.join()));
+  ok('spotlight changes between weeks', new Set(cyc.filter((_, i) => i % 7 === 0).map(c => c.spotlight.join())).size > 4);
+  ok('deal is never also a spotlight item', cyc.every(c => !c.spotlight.includes(c.deal)));
+  ok('deals and spotlights are never free or collection items', cyc.every(c => [c.deal, ...c.spotlight].every(id => ECON.SHOP_BY_ID[id].price > 0 && !ECON.SHOP_BY_ID[id].collection)));
+  const order = cyc.filter((_, i) => i % 7 === 0).map(c => c.collection.id);
+  check('collections cycle in a fixed order, each back every N weeks', order.slice(ECON.COLLECTIONS.length, 2 * ECON.COLLECTIONS.length), order.slice(0, ECON.COLLECTIONS.length));
+  check('every collection shows up', new Set(order).size, ECON.COLLECTIONS.length);
+  ok('collection items are buyable only in their week',
+     cyc.every((c, i) => ECON.SHOP.filter(s => s.collection).every(s => (ECON.shopPrice(s.id, days[i]) !== null) === (s.collection === c.collection.id))));
+  ok('sale prices are whole chips, multiples of 50, and cheaper',
+     days.every(d => ECON.SHOP.every(s => { const p = ECON.shopPrice(s.id, d); return !p || (Number.isInteger(p.price) && (p.off === 0 ? p.price === s.price : p.price % 50 === 0 && p.price < s.price)); })));
+  const sun = ECON.shopCycle(new Date(2026, 10, 8, 23, 59)), mon = ECON.shopCycle(new Date(2026, 10, 9, 0, 1));
+  ok('the week turns over Monday at midnight', sun.collection.id !== mon.collection.id && sun.spotlight.join() !== mon.spotlight.join());
+}
 
 // ---------------------------------------------------------------------------
 // 2. Wheel fairness with the real crypto RNG
@@ -497,6 +518,29 @@ let sessionSummary;
   const H2 = loadPage({ store, clock });
   const led2 = H2.S().econ.ledger.quests;
   check('old-save done quests count as claimed (no double pay)', [H2.econUnclaimed().length, H2.econClaimAll(), H2.S().econ.ledger.quests - led2], [0, 0, 0]);
+}
+
+// ---------------------------------------------------------------------------
+// 7. Shop rotation through the real page: sale prices charged, rotation enforced
+// ---------------------------------------------------------------------------
+{
+  const clock = { t: new Date(2026, 10, 18, 12).getTime() };
+  const H = loadPage({ store: new Map(), clock });
+  const S = H.S();
+  H.econGrant('admin', 1e7);   // enough for any deal, including the priciest titles
+  const c = ECON.shopCycle(new Date(clock.t));
+  const deal = ECON.shopPrice(c.deal, new Date(clock.t));
+  const chips0 = S.chips, shop0 = S.econ.ledger.shop;
+  check('buying the deal succeeds', H.econBuy(c.deal), true);
+  check('...and charges the sale price, through the ledger', [chips0 - S.chips, shop0 - S.econ.ledger.shop], [deal.price, deal.price]);
+  ok('...which is less than full price', deal.price < ECON.SHOP_BY_ID[c.deal].price);
+  const away = ECON.SHOP.find(s => s.collection && s.collection !== c.collection.id);
+  check('an item from another week\'s collection cannot be bought', H.econBuy(away.id), false);
+  const here = c.collection.items[0];
+  check('this week\'s collection item can be bought at full price', [H.econBuy(here.id), chips0 - deal.price - S.chips], [true, here.price]);
+  clock.t += 7 * 86400000;   // next week: it's out of rotation, but still owned and equippable
+  check('a bought collection item stays owned after it rotates out', [S.econ.owned.includes(here.id), H.econEquip(here.id)], [true, true]);
+  check('ledger reconciles after shop purchases', H.econReconcile().ok, true);
 }
 
 // ---------------------------------------------------------------------------
