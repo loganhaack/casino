@@ -77,6 +77,8 @@
   }
   .card.red { color: #c0392b; }
   .card .r { font-size: 21px; line-height: 1; }
+  /* Suit under the rank in the corner, like a real card, so it stays visible in a fanned hand. */
+  .card .r .cs { display: block; font-size: 15px; margin-top: 2px; }
   .card .s { font-size: 24px; line-height: 1; align-self: flex-end; }
   .card.back {
     background: repeating-linear-gradient(45deg, var(--back-a) 0 6px, var(--back-b) 6px 12px);
@@ -84,6 +86,33 @@
   }
   .card.empty {
     background: transparent; border: 2px dashed rgba(255,255,255,.15); box-shadow: none;
+  }
+
+  /* ---------- card animation (presentation only; see "ANIMATION" in the script) ----------
+     dealIn moves `translate`/`opacity`, flipCard moves `transform`, so one card
+     can be dealt face down and then turned over. The ::after layer is the card
+     back, shown until the flip's halfway point. */
+  .card { position: relative; }
+  .card.dealing { animation: dealIn .26s cubic-bezier(.2,.8,.3,1) var(--deal, 0ms) both; }
+  .card.flipping { animation: flipCard .34s ease-in-out var(--flip, 0ms) both; }
+  .card.dealing.flipping {
+    animation: dealIn .26s cubic-bezier(.2,.8,.3,1) var(--deal, 0ms) both,
+               flipCard .34s ease-in-out var(--flip, 0ms) both;
+  }
+  .card.flipping::after {
+    content: ''; position: absolute; inset: -2px; border-radius: 7px;
+    background: repeating-linear-gradient(45deg, var(--back-a) 0 6px, var(--back-b) 6px 12px);
+    border: 2px solid #fdfcf7;
+    animation: flipBack .34s step-end var(--flip, 0ms) both;
+  }
+  @keyframes dealIn   { from { opacity: 0; translate: 0 -46px; } to { opacity: 1; translate: 0 0; } }
+  @keyframes flipCard { 0%, 100% { transform: scaleX(1); } 50% { transform: scaleX(0); } }
+  @keyframes flipBack { 0% { opacity: 1; } 50%, 100% { opacity: 0; } }
+  .later { animation: fadeIn .2s ease-out var(--later, 0ms) both; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .felt.busy .actions button { pointer-events: none; opacity: .55; }
+  @media (prefers-reduced-motion: reduce) {
+    .card.dealing, .card.flipping, .card.flipping::after, .later { animation: none !important; }
   }
 
   .handname {
@@ -269,6 +298,9 @@
   .bj-hand.active { border-color: var(--chip); box-shadow: 0 0 0 1px rgba(232,197,71,.3); }
   .bj-hand .cards { min-height: 0; gap: 0; }
   .bj-hand .card + .card, #bjDealerCards .card + .card { margin-left: -30px; }
+  /* Empty slots are placeholders, not a fanned hand: side by side, no overlap. */
+  .cards .card.empty + .card.empty, #bjDealerCards .card.empty + .card.empty { margin-left: 0; }
+  .bj-empty { display: flex; gap: 10px; }
   .bj-hand .meta { font-size: 12px; color: rgba(255,255,255,.7); margin-top: 6px; }
   .bj-hand .meta strong { font-family: var(--mono); color: var(--text); }
   .bj-bet { display: flex; align-items: center; gap: 10px; margin: 16px 0; flex-wrap: wrap; }
@@ -278,16 +310,48 @@
   .shoeinfo { font-size: 12px; color: rgba(255,255,255,.5); }
   #bjInsure, #bjNoInsure { flex: 1; }
 
+  /* Phones: the whole table (dealer, hands, bets, buttons, result) should fit
+     on one screen so a round never needs scrolling. */
   @media (max-width: 620px) {
+    .wrap { padding: 8px; }
+    header { padding: 8px 10px; margin-bottom: 8px; gap: 6px 10px; }
+    .brand { display: none; }
+    .bank .amt { font-size: 20px; }
+    .tabs { width: 100%; order: -1; }
+    .tabs button { flex: 1 1 0; min-width: 0; padding: 6px 2px; font-size: 12px; }
+    .rank { flex: 1; min-width: 0; }
+    .eventbar { margin: 0 0 8px; padding: 6px 10px; font-size: 12px; }
+
+    .felt { border-width: 6px; padding: 10px; border-radius: 12px; }
+    .seat { margin-bottom: 8px; }
+    .seat-label { margin-bottom: 4px; }
+    .cards { min-height: 80px; gap: 8px; }
+    .card { width: 56px; height: 80px; padding: 5px 6px; }
+    .card .r { font-size: 17px; } .card .s { font-size: 19px; }
+    .handname { margin-top: 4px; font-size: 12px; min-height: 18px; }
+    .bj-hands { min-height: 0; gap: 8px; }
+    .bj-hand { padding: 6px 8px 4px; }
+    .bj-hand .card + .card, #bjDealerCards .card + .card { margin-left: -30px; }
+    .bj-hand .meta { margin-top: 4px; font-size: 11px; }
+
+    .bets { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 8px 0; }
+    .betbox { padding: 6px 4px; }
+    .betbox .name { font-size: 10px; letter-spacing: .03em; }
+    .betbox .val { font-size: 17px; }
+    .betbox .res { min-height: 14px; font-size: 11px; }
+    .betbox .adj { margin-top: 4px; }
+    .bj-bet { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 8px 0; }
+    .card .r .cs { font-size: 13px; }
+    .bj-bet .betbox { display: block; padding: 6px 4px; }
+    .bj-bet .betbox .adj { margin-top: 4px; }
+    .bj-bet .betbox button { padding: 5px 0; }
+    .shoeinfo { grid-column: 1 / -1; font-size: 11px; }
+
+    .actions { gap: 6px; }
+    .actions button { flex: 1 1 0; min-width: 0; padding: 12px 4px; font-size: 14px; }
+    .msg { margin-top: 8px; padding: 8px 10px; font-size: 13px; min-height: 0; }
+    .hint { font-size: 11px; margin-top: 4px; }
     .grid2 { grid-template-columns: 1fr; }
-    .bets { grid-template-columns: 1fr; }
-    .card { width: 62px; height: 88px; }
-    .card .r { font-size: 18px; } .card .s { font-size: 20px; }
-    .bj-hand .card + .card, #bjDealerCards .card + .card { margin-left: -34px; }
-    .actions button { flex: 1 1 30%; min-width: 0; padding: 12px 6px; }
-    .tabs { width: 100%; order: 3; }
-    .tabs button { flex: 1 1 0; min-width: 0; padding: 7px 2px; font-size: 12px; }
-    .rank { flex: 1; }
   }
 </style>
 </head>
@@ -492,8 +556,8 @@
 
     <div class="actions">
       <button id="btnDeal">Deal</button>
-      <button id="btnPlay" disabled>Play (2&times; ante)</button>
-      <button id="btnFold" class="ghost" disabled>Fold</button>
+      <button id="btnPlay" disabled hidden>Play (2&times; ante)</button>
+      <button id="btnFold" class="ghost" disabled hidden>Fold</button>
     </div>
 
     <div class="msg" id="msg">Place your bets.</div>
@@ -927,32 +991,100 @@ const EXACT = (() => {
    =========================================================================== */
 
 let deck = [], player = [], dealer = [], phase = 'betting';
+let tcpDealerDealAt = [];   // display only: when each dealer card's deal animation starts
 let pEval = null, dEval = null;
 
 /* ---------- DOM helpers ------------------------------------------------- */
 const $ = id => document.getElementById(id);
 
-function cardEl(c, faceDown) {
+/* ===========================================================================
+   ANIMATION: presentation only
+   ---------------------------------------------------------------------------
+   Cards slide in and turn over AFTER the round is already decided, settled
+   and saved. Nothing here reads or changes game state, and no game function
+   waits on it (the Node harnesses run with timers stubbed out and never
+   touch this). It only delays what the screen shows, and the click/key
+   handlers ignore input for the few hundred ms the reveal takes. A reload
+   mid-animation just shows the final result.
+   =========================================================================== */
+
+const ANIM = {
+  step: 170,        // ms between cards being dealt
+  dealerStep: 420,  // ms between dealer draws, for a bit of suspense
+  deal: 260,        // dealIn duration (matches CSS)
+  flip: 340,        // flipCard duration (matches CSS)
+  off: typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches,
+};
+let animUntil = 0;
+const animBusy = () => Date.now() < animUntil;
+const animLeft = () => Math.max(0, animUntil - Date.now());
+const setVar = (el, k, ms) => { if (el.style && el.style.setProperty) el.style.setProperty(k, ms + 'ms'); };
+
+/** Block game input for `ms` from now (extends, never shortens). */
+function animHold(ms) {
+  if (ANIM.off || ms <= 0) return;
+  const until = Date.now() + ms;
+  if (until <= animUntil) return;
+  animUntil = until;
+  document.querySelectorAll('.felt').forEach(f => f.classList.add('busy'));
+  setTimeout(() => {
+    if (animBusy()) return;
+    document.querySelectorAll('.felt').forEach(f => f.classList.remove('busy'));
+    bankHeld = null;
+    renderBank();
+  }, ms + 20);
+}
+
+/** Fade `el` in after `ms` (results, totals) so they appear once the cards land. */
+function animLater(el, ms) {
+  el.classList.remove('later');
+  if (ANIM.off || ms <= 0) return;
+  void el.offsetWidth;   // restart the animation on a reused element
+  setVar(el, '--later', ms);
+  el.classList.add('later');
+}
+
+/* The bank shows its pre-settlement value until the reveal finishes, so the
+ * number doesn't give the result away. Display only; S.chips is already final. */
+let bankHeld = null;
+/** Call with the balance to keep showing, then render; animHold's timer clears it. */
+function bankHold(value) { bankHeld = value; }
+/** Call after the reveal is scheduled: clears the hold now if nothing is animating. */
+function bankRelease() { if (!animBusy()) bankHeld = null; renderBank(); }
+
+/** fx: { deal: ms } slides the card in; { flip: ms } turns it face up (it shows its back until then). */
+function cardEl(c, faceDown, fx) {
   const d = document.createElement('div');
-  if (faceDown) { d.className = 'card back'; return d; }
-  const s = suitOf(c);
-  d.className = 'card' + (s === 1 || s === 2 ? ' red' : '');
-  d.innerHTML = `<div class="r">${RANKS[rankOf(c)]}</div><div class="s">${SUITS[s]}</div>`;
+  if (faceDown) d.className = 'card back';
+  else {
+    const s = suitOf(c);
+    d.className = 'card' + (s === 1 || s === 2 ? ' red' : '');
+    d.innerHTML = `<div class="r">${RANKS[rankOf(c)]}<span class="cs">${SUITS[s]}</span></div><div class="s">${SUITS[s]}</div>`;
+  }
+  if (fx && !ANIM.off) {
+    if (fx.deal != null) { d.className += ' dealing'; setVar(d, '--deal', fx.deal); }
+    if (fx.flip != null && !faceDown) { d.className += ' flipping'; setVar(d, '--flip', fx.flip); }
+  }
   return d;
 }
 
-function renderCards(el, cards, faceDown) {
-  el.innerHTML = '';
-  if (!cards.length) {
-    for (let i = 0; i < 3; i++) {
-      const e = document.createElement('div'); e.className = 'card empty'; el.appendChild(e);
-    }
-    return;
+function emptySlots(el, n) {
+  for (let i = 0; i < n; i++) {
+    const e = document.createElement('div'); e.className = 'card empty'; el.appendChild(e);
   }
-  cards.forEach(c => el.appendChild(cardEl(c, faceDown && !$('peek').checked)));
 }
 
-function renderBank() { $('bank').textContent = S.chips.toLocaleString(); }
+/** fxOf(i) optionally gives card i an animation (see cardEl). */
+function renderCards(el, cards, faceDown, fxOf, slots = 3) {
+  el.innerHTML = '';
+  if (!cards.length) { emptySlots(el, slots); return; }
+  cards.forEach((c, i) => el.appendChild(cardEl(c, faceDown && !$('peek').checked, fxOf && fxOf(i))));
+}
+
+function renderBank() {
+  const v = bankHeld != null && animBusy() ? bankHeld : S.chips;
+  $('bank').textContent = v.toLocaleString();
+}
 
 function renderBets() {
   for (const k of ['ante','pp','scb']) {
@@ -1000,20 +1132,26 @@ function deal() {
   S.tcpRound = { player, dealer, stake };   // a reload resumes this hand instead of losing the stake
   clearResults();
   renderBank();
-  renderCards($('playerCards'), player, false);
-  renderCards($('dealerCards'), dealer, true);
+  // Deal alternately, player first, like a real table.
+  const t0 = animLeft(), now = Date.now();
+  renderCards($('playerCards'), player, false, i => ({ deal: t0 + 2 * i * ANIM.step }));
+  renderCards($('dealerCards'), dealer, true, i => ({ deal: t0 + (2 * i + 1) * ANIM.step }));
+  tcpDealerDealAt = dealer.map((_, i) => now + t0 + (2 * i + 1) * ANIM.step);
+  const dealt = t0 + 5 * ANIM.step + ANIM.deal;
+  animHold(dealt);
   $('playerHand').textContent = pEval.name;
+  animLater($('playerHand'), dealt);
   $('dealerHand').textContent = '';
 
   if (S.bets.ante > 0) {
     phase = 'decision';
-    $('btnDeal').disabled = true;
-    $('btnPlay').disabled = S.chips < S.bets.ante;
-    $('btnFold').disabled = false;
+    tcpButtons(true);
     $('msg').textContent = 'Play or fold?';
     const should = pEval.value >= Q64;
     $('hint').textContent = `Strategy: ${should ? 'play' : 'fold'} (threshold is Q-6-4)` +
       (S.chips < S.bets.ante ? ' — not enough chips to raise, you must fold.' : '');
+    animLater($('msg'), dealt);
+    animLater($('hint'), dealt);
   } else {
     // side bets only; no decision to make
     resolve(false);
@@ -1027,7 +1165,16 @@ function deal() {
 
 function resolve(raised) {
   phase = 'done';
-  renderCards($('dealerCards'), dealer, false);
+  // Turn the dealer's cards over one at a time (after the deal, if it is still playing).
+  bankHold(S.chips);
+  const t0 = animLeft(), now = Date.now();
+  const flipStep = ANIM.step * 1.8;
+  renderCards($('dealerCards'), dealer, false, i => {
+    const flip = t0 + i * flipStep, wait = (tcpDealerDealAt[i] || 0) - now;
+    return wait > 0 ? { deal: wait, flip } : { flip };
+  });
+  const revealed = t0 + 2 * flipStep + ANIM.flip;
+  animHold(revealed);
 
   const qualified = dEval.value >= QUALIFY;
   $('dealerHand').innerHTML = dEval.name +
@@ -1148,15 +1295,24 @@ function resolve(raised) {
   if (econLines.length) $('msg').innerHTML += '<br>' + econLines.join('<br>');
   $('msg').innerHTML += econRescueHint();
 
-  renderBank();
+  for (const el of [$('dealerHand'), $('msg'), $('res-ante'), $('res-pp'), $('res-scb')]) animLater(el, revealed);
+  bankRelease();
   renderStats();
   renderLog();
   save();
 
-  $('btnDeal').disabled = false;
-  $('btnPlay').disabled = true;
-  $('btnFold').disabled = true;
+  tcpButtons(false);
   phase = 'betting';
+}
+
+/** Between hands only Deal shows; during a decision only Play and Fold. */
+function tcpButtons(decision) {
+  $('btnDeal').hidden = decision;
+  $('btnPlay').hidden = !decision;
+  $('btnFold').hidden = !decision;
+  $('btnDeal').disabled = decision;
+  $('btnPlay').disabled = !decision || S.chips < S.bets.ante;
+  $('btnFold').disabled = !decision;
 }
 
 /* ===========================================================================
@@ -1337,6 +1493,7 @@ function bjAfter(prefix) {
 }
 
 function bjSettle(r, prefix) {
+  bankHold(S.chips);   // display only: keep showing this until the dealer's cards are revealed
   S.chips += r.returned;
 
   const st = TS().stats;
@@ -1410,10 +1567,64 @@ function bjSettle(r, prefix) {
   if (TS().bet > S.chips) TS().bet = RULES.bjMinBet;
 
   save();
-  renderBank();
   bjRender();
+  bankRelease();
   bjRenderStats();
   bjRenderLog();
+}
+
+/* Display only: what each table last drew, so a render animates just the
+ * cards that are new since then. Never saved, never read by game logic. */
+const bjShown = {};
+
+/**
+ * Plan the animation for this render: which cards slide in, whether the hole
+ * card turns over, and when the last one lands (`end`, ms from now).
+ * Order follows a real table: on a fresh deal, player / dealer / player /
+ * dealer (hole face down); then player draws; then the hole card turns over;
+ * then dealer draws, a little slower.
+ */
+function bjPlanAnim(r, live, holeHidden) {
+  const peek = $('peek').checked;
+  const id = !r ? 0 : TS().stats.rounds + (live ? 1 : 0);   // live round n+1 settles as round n+1
+  const dTok = r ? r.dealer.map((c, i) => (i === 1 && holeHidden && !peek ? 'X' : c)) : [];
+  const hTok = r ? r.hands.map(h => h.cards.slice()) : [];
+  const out = { dTok, d: [], h: hTok.map(() => []), hEnd: hTok.map(() => 0), end: 0 };
+  const prev = bjShown[bjTable];
+  bjShown[bjTable] = { id, d: dTok, h: hTok };
+  if (!prev || !r || ANIM.off) return out;   // first paint of this table: no animation
+
+  const fresh = prev.id !== id;
+  const pd = fresh ? [] : prev.d, ph = fresh ? [] : prev.h;
+  let t = animLeft();
+  const deal = (arr, i, gap, hand) => {
+    arr[i] = Object.assign(arr[i] || {}, { deal: t });
+    out.end = Math.max(out.end, t + ANIM.deal);
+    if (hand != null) out.hEnd[hand] = t + ANIM.deal;
+    t += gap;
+  };
+
+  if (fresh) {
+    for (let i = 0; i < 2; i++) {
+      if (hTok[0] && hTok[0][i] != null) deal(out.h[0], i, ANIM.step, 0);
+      if (dTok[i] != null) deal(out.d, i, ANIM.step);
+    }
+  }
+  hTok.forEach((cards, h) => cards.forEach((c, i) => {
+    if (!out.h[h][i] && (!ph[h] || ph[h][i] !== c)) deal(out.h[h], i, ANIM.step, h);
+  }));
+  if (dTok.length > 1 && dTok[1] !== 'X' && (fresh ? !peek : pd[1] === 'X')) {
+    t = Math.max(t, out.end + 80);
+    out.d[1] = Object.assign(out.d[1] || {}, { flip: t });
+    out.end = Math.max(out.end, t + ANIM.flip);
+    t += ANIM.flip;
+  }
+  for (let i = 2; i < dTok.length; i++) {
+    if (!fresh && pd[i] !== undefined) continue;
+    t = Math.max(t, out.end + 160);
+    deal(out.d, i, ANIM.dealerStep);
+  }
+  return out;
 }
 
 function bjRender() {
@@ -1433,37 +1644,50 @@ function bjRender() {
   const r = TS().round || TS().last;
   const live = !!TS().round;
   const holeHidden = live && (r.phase === 'insurance' || r.phase === 'player');
+  const fx = bjPlanAnim(r, live, holeHidden);
+  const end = fx.end;
+  animHold(end);
 
   // Dealer
   const dEl = $('bjDealerCards');
-  if (!r) renderCards(dEl, [], false);
+  if (!r) renderCards(dEl, [], false, null, 2);
   else {
     dEl.innerHTML = '';
-    r.dealer.forEach((c, i) => dEl.appendChild(cardEl(c, i === 1 && holeHidden && !$('peek').checked)));
+    r.dealer.forEach((c, i) => dEl.appendChild(cardEl(c, fx.dTok[i] === 'X', fx.d[i])));
   }
   $('bjDealerHand').textContent = !r ? '' : holeHidden
     ? `Showing ${bjTotalLabel([r.dealer[0]])}`
     : (r.dealerBlackjack ? 'Blackjack' : r.dealer22Push ? '22: pushes every live hand' : bjTotalLabel(r.dealer));
+  animLater($('bjDealerHand'), end);
+  animLater($('bjMsg'), end);
+  animLater($('bjHint'), end);
 
   // Player hands
   const hEl = $('bjHands');
   hEl.innerHTML = '';
-  if (r) {
+  if (!r) {
+    const empty = document.createElement('div');
+    empty.className = 'cards bj-empty';
+    renderCards(empty, [], false, null, 2);
+    hEl.appendChild(empty);
+  } else {
     r.hands.forEach((h, i) => {
       const box = document.createElement('div');
       box.className = 'bj-hand' + (live && r.phase === 'player' && i === r.active ? ' active' : '');
       const cards = document.createElement('div');
       cards.className = 'cards';
-      h.cards.forEach(c => cards.appendChild(cardEl(c, false)));
+      h.cards.forEach((c, j) => cards.appendChild(cardEl(c, false, fx.h[i][j])));
       box.appendChild(cards);
       const meta = document.createElement('div');
       meta.className = 'meta';
+      animLater(meta, fx.hEnd[i]);
       const isNat = r.hands.length === 1 && BJ.isNatural(h.cards, false);
       let res = '';
       if (h.outcome) {
         const d = h.returned - h.bet;
-        const cls = d > 0 ? 'win' : d < 0 ? 'lost' : 'pushc';
-        res = ` &middot; <span class="${cls}">${bjOutcomeLabel(r, h)} ${d >= 0 ? '+' : ''}${d}</span>`;
+        const cls = (d > 0 ? 'win' : d < 0 ? 'lost' : 'pushc') + (end > 0 && !ANIM.off ? ' later' : '');
+        res = ` &middot; <span class="${cls}" style="--later:${end}ms">` +
+          `${bjOutcomeLabel(r, h)} ${d >= 0 ? '+' : ''}${d}</span>`;
       }
       meta.innerHTML = `<strong>${isNat ? 'Blackjack' : bjTotalLabel(h.cards)}</strong>` +
         ` &middot; bet ${h.bet}${h.free ? ` + <span class="pushc">${h.free} free</span>` : ''}` +
@@ -1479,8 +1703,10 @@ function bjRender() {
   $('bjMainActions').hidden = insurance;
   $('bjInsActions').hidden = !insurance;
   $('bjInsure').disabled = !legal.insure;
+  // Between rounds only Deal shows; during a round only the play buttons.
   $('bjDeal').disabled = live;
-  for (const a of BJ_ACTIONS) bjBtn(a).disabled = !legal[a];
+  $('bjDeal').hidden = live;
+  for (const a of BJ_ACTIONS) { bjBtn(a).disabled = !legal[a]; bjBtn(a).hidden = !live; }
   const free = live ? BJ.freeOffers(r) : {};
   $('bjDouble').textContent = free.double ? 'Free double' : 'Double';
   $('bjSplit').textContent = free.split ? 'Free split' : 'Split';
@@ -2129,27 +2355,29 @@ $('btnReset').onclick = () => {
 
 document.querySelectorAll('[data-bet]').forEach(b => {
   b.onclick = () => {
-    if (phase !== 'betting') return;
+    if (phase !== 'betting' || animBusy()) return;
     const k = b.dataset.bet, dir = Math.sign(parseInt(b.dataset.d, 10));
     S.bets[k] = ECON.stepBet(S.bets[k], dir, { min: RULES.minBet, max: econMaxBet(), multipleOf: 5, allowZero: true });
     renderBets(); save();
   };
 });
 
-$('btnDeal').onclick = deal;
+// Input is ignored while cards are still animating (animBusy). That gate lives
+// here in the handlers, never in deal()/resolve(), so game logic can't depend on it.
+$('btnDeal').onclick = () => { if (!animBusy()) deal(); };
 $('btnPlay').onclick = () => {
-  if (phase !== 'decision') return;
+  if (phase !== 'decision' || animBusy()) return;
   S.chips -= S.bets.ante;
   renderBank();
   resolve(true);
 };
-$('btnFold').onclick = () => { if (phase === 'decision') resolve(false); };
+$('btnFold').onclick = () => { if (phase === 'decision' && !animBusy()) resolve(false); };
 
 /* ---------- blackjack wiring ---------- */
 document.querySelectorAll('.tabs button').forEach(b => { b.onclick = () => showGame(b.dataset.game); });
 document.querySelectorAll('[data-bjside]').forEach(b => {
   b.onclick = () => {
-    if (TS().round) return;
+    if (TS().round || animBusy()) return;
     const k = b.dataset.bjside;
     TS().side[k] = ECON.stepBet(TS().side[k], Math.sign(parseInt(b.dataset.d, 10)),
       { min: RULES.bjMinBet, max: econMaxBet(), multipleOf: RULES.bjBetStep, allowZero: true });
@@ -2158,22 +2386,24 @@ document.querySelectorAll('[data-bjside]').forEach(b => {
 });
 document.querySelectorAll('[data-bjbet]').forEach(b => {
   b.onclick = () => {
-    if (TS().round) return;
+    if (TS().round || animBusy()) return;
     TS().bet = ECON.stepBet(TS().bet, Math.sign(parseInt(b.dataset.bjbet, 10)),
       { min: RULES.bjMinBet, max: econMaxBet(), multipleOf: RULES.bjBetStep });
     bjRender(); save();
   };
 });
-$('bjDeal').onclick = bjDeal;
-for (const a of BJ_ACTIONS) bjBtn(a).onclick = () => bjAct(a);
-$('bjInsure').onclick = () => bjAct('insure');
-$('bjNoInsure').onclick = () => bjAct('decline');
+// As with Three Card Poker, the animation gate is in the handlers, never in bjDeal/bjAct.
+$('bjDeal').onclick = () => { if (!animBusy()) bjDeal(); };
+for (const a of BJ_ACTIONS) bjBtn(a).onclick = () => { if (!animBusy()) bjAct(a); };
+$('bjInsure').onclick = () => { if (!animBusy()) bjAct('insure'); };
+$('bjNoInsure').onclick = () => { if (!animBusy()) bjAct('decline'); };
 $('peek').addEventListener('change', () => bjRender());
 
 document.addEventListener('keydown', e => {
   if (!BJ_TABLES[S.game] || e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
   if ($('admin').classList.contains('open')) return;
+  if (animBusy()) { if (e.key === 'Enter') e.preventDefault(); return; }
   const k = e.key.toLowerCase();
   const map = { h: 'hit', s: 'stand', d: 'double', p: 'split' };
   if (map[k]) { e.preventDefault(); bjAct(map[k]); }
@@ -2225,9 +2455,7 @@ if (S.tcpRound) {
   renderCards($('playerCards'), player, false);
   renderCards($('dealerCards'), dealer, true);
   $('playerHand').textContent = pEval.name;
-  $('btnDeal').disabled = true;
-  $('btnPlay').disabled = S.chips < S.bets.ante;
-  $('btnFold').disabled = false;
+  tcpButtons(true);
   $('msg').textContent = 'Hand restored from your last visit. Play or fold?';
 } else if (Date.now() >= econBonusReadyAt()) {
   $('msg').innerHTML = 'Your <a href="#" onclick="showGame(\'rewards\');return false">Bonus Wheel</a> is ready to spin. Place your bets.';

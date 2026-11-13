@@ -186,7 +186,12 @@ through saving (the vault), not handouts. Never through odds.
 - [x] Free Bet Blackjack: three rule keys on the same engine, own strategy chart
 - [x] 21+3 and Perfect Pairs: exact enumeration, cross-checked combination counts
 - [x] Economy: ranks, table limits, wheels, quests, events, cosmetics shop, ledger
+- [x] Table feel: cards are dealt and turned over in sequence, and the result
+      shows once they land (display only; settlement has already happened)
 - [ ] Supabase: auth, shared chip balance, leaderboard
+- [ ] Profiles (with Supabase): display name, avatar, equipped cosmetics
+      visible to friends. Gives the shop more to sell for chips (avatars,
+      frames). Cosmetic only, never anything that affects play.
 - [ ] Slots — code is easy, the PAR sheet is the hard part. Save it for last.
 
 ## Extending it
