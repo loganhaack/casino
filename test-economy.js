@@ -272,6 +272,7 @@ function loadPage({ store, clock, crypto }) {
   S: () => S, phase: () => phase, deal, resolve, pEval: () => pEval, Q64,
   showGame, bjDeal, bjAct, econSpin, econBuy, econEquip, econGrant, econReconcile, econRescueReady,
   econBonusReadyAt, econMaxBet, econTier, chipsInPlay, BJ_TABLES, econVault,
+  econClaimQuest, econClaimAll, econUnclaimed, econEnsureQuests,
   play: () => { S.chips -= S.bets.ante; resolve(true); },
 };`, sb, { filename: 'index.html:script' });
   return sb.__h;
@@ -320,6 +321,7 @@ function loadPage({ store, clock, crypto }) {
         const r = T.last;
         log.push([game, r.dealer, r.hands.map(h => [h.cards, h.outcome]), r.net]);
       }
+      H.econClaimAll();   // claiming is economy, never cards: must not change the log
     }
     return { log, ledger: S.econ.ledger, tier: H.econTier() };
   });
@@ -342,7 +344,7 @@ let sessionSummary;
   let x = 99;
   const rnd = (n) => { x = (Math.imul(x, 1103515245) + 12345) >>> 0; return (x >>> 8) % n; };
   let steps = 0, reloads = 0, rescues = 0, bonusSpins = 0, buys = 0, badRescue = 0, badBonus = 0, midReloads = 0;
-  let reconcileFails = 0, firstFail = null, vaultMoves = 0;
+  let reconcileFails = 0, firstFail = null, vaultMoves = 0, claims = 0;
   const assertLedger = (where) => {
     const r = H.econReconcile();
     if (!r.ok) { reconcileFails++; if (!firstFail) firstFail = `${where}: expected ${r.expected}, chips ${r.actual}`; }
@@ -404,8 +406,17 @@ let sessionSummary;
     } else {                                        // Plain reload
       H = loadPage({ store, clock }); reloads++;
     }
-    // Lose chips fast sometimes so the rescue path gets exercised.
-    if (rnd(40) === 0 && H.chipsInPlay(H.S()) === 0) H.econGrant('admin', -Math.floor(H.S().chips * 0.98));
+    // Claim finished quests now and then (and sometimes leave them for the day rollover).
+    if (rnd(5) === 0 && H.econClaimAll() > 0) claims++;
+    // Go broke sometimes so the rescue path gets exercised. "Broke" means under
+    // the rescue threshold counting the vault, so sometimes empty the vault too
+    // (not always, or it never holds a balance for a full day and earns no
+    // interest). The old 98% drain usually left more than the threshold, so
+    // rescues rarely happened and this coverage check was flaky.
+    if (rnd(40) === 0 && H.chipsInPlay(H.S()) === 0) {
+      if (H.S().econ.vault.balance > 0 && rnd(10) === 0) H.econVault(-H.S().econ.vault.balance);
+      H.econGrant('admin', rnd(ECON.WHEELS.rescue.availableBelow) - H.S().chips);
+    }
     assertLedger(`step ${i}`);
     steps++;
   }
@@ -415,12 +426,12 @@ let sessionSummary;
   check('Bonus Wheel spins exactly when (and only when) its cooldown has passed', badBonus, 0);
   check('Rescue Wheel available exactly when under 10 chips with nothing on the table', badRescue, 0);
   ok('session exercised rescues, bonus spins, purchases, vault and reloads',
-     rescues > 5 && bonusSpins > 5 && buys > 0 && midReloads > 5 && vaultMoves > 20 && S.econ.ledger.interest > 0);
+     rescues > 5 && bonusSpins > 5 && buys > 0 && midReloads > 5 && vaultMoves > 20 && S.econ.ledger.interest > 0 && claims > 5);
   ok('chips never negative', S.chips >= 0);
   const L = S.econ.ledger;
   sessionSummary = `${steps.toLocaleString()} steps over ${((clock.t - dateOnWeekday(1, 9).getTime()) / 86400000).toFixed(1)} days, ` +
     `${midReloads} mid-hand reloads + ${reloads} plain reloads; ${bonusSpins} bonus spins (+${L.bonusWheel.toLocaleString()}), ` +
-    `${rescues} rescues (+${L.rescueWheel.toLocaleString()}), quests +${L.quests.toLocaleString()}, promos +${L.promo.toLocaleString()}, ` +
+    `${rescues} rescues (+${L.rescueWheel.toLocaleString()}), quests +${L.quests.toLocaleString()} (${claims} claims), promos +${L.promo.toLocaleString()}, ` +
     `vault interest +${L.interest.toLocaleString()} (${vaultMoves} moves), shop ${L.shop.toLocaleString()}; ` +
     `reached level ${ECON.levelFromXp(S.econ.xp).level}, ended with ${(S.chips + S.econ.vault.balance).toLocaleString()}`;
 }
@@ -438,6 +449,54 @@ let sessionSummary;
   check('pre-economy save: chips kept', H.S().chips, 3210);
   check('pre-economy save: ledger reconciles', H.econReconcile().ok, true);
   check('pre-economy save: unexplained chips become the opening balance', H.S().econ.ledger.opening, 3210 + 120);
+}
+
+// ---------------------------------------------------------------------------
+// 6. Quests are claimed by hand: completing pays nothing, claiming pays once
+// ---------------------------------------------------------------------------
+{
+  const store = new Map();
+  const clock = { t: dateOnWeekday(1, 10).getTime() };      // Monday: Quest Rush doubles rewards
+  const H = loadPage({ store, clock });
+  const S = H.S();
+  H.econGrant('admin', 1e6);                                  // enough to play a while, via the ledger
+  let completedAt = null, g = 0;
+  while (!completedAt && g++ < 3000) {
+    const before = { chips: S.chips, quests: S.econ.ledger.quests };
+    if (g % 2) { S.bets = { ante: 10, pp: 5, scb: 5 }; H.deal(); if (H.phase() === 'decision') H.play(); }
+    else { H.showGame('bj'); S.bj.bet = 10; S.bj.side = { perfectPairs: 10, twentyOnePlus3: 10 }; H.bjDeal();
+           let k = 0; while (S.bj.round && k++ < 30) H.bjAct(BJ.basicStrategy(S.bj.round, S.chips)); }
+    if (H.econUnclaimed().length) completedAt = before;
+  }
+  ok('a quest completed during play', completedAt);
+  const { q, i } = H.econUnclaimed()[0];
+  check('completing a quest pays nothing yet (ledger.quests unchanged)', S.econ.ledger.quests, completedAt.quests);
+  ok('completion leaves a claimable notification', S.econ.notes.some(n => n.action && n.action.type === 'claim' && n.action.i === i));
+  check('reward fixed at completion, Quest Rush doubled', q.reward.chips, 2 * ECON.questReward(0, dateOnWeekday(2, 10)).chips);
+  const chips0 = S.chips, led0 = S.econ.ledger.quests;
+  const rw = H.econClaimQuest(i, S.econ.quests.day);
+  check('claim pays exactly the reward', [S.chips - chips0, S.econ.ledger.quests - led0], [rw.chips, rw.chips]);
+  check('a claimed quest cannot be claimed again', H.econClaimQuest(i, S.econ.quests.day), null);
+  check('a stale (wrong-day) claim is refused', H.econClaimQuest(i, '1999-01-01'), null);
+  check('ledger reconciles after claiming', H.econReconcile().ok, true);
+
+  // Leave one finished quest unclaimed overnight: it's paid at rollover, not lost.
+  const other = S.econ.quests.list.find(x => !x.done);
+  other.done = true; other.claimed = false; other.progress = other.target; other.reward = { chips: 123, xp: 0 };
+  const led1 = S.econ.ledger.quests, day1 = S.econ.quests.day;
+  clock.t += 24 * 3600 * 1000;
+  H.econEnsureQuests();
+  ok('rollover starts a new day of quests', S.econ.quests.day !== day1);
+  check('rollover pays unclaimed rewards exactly', S.econ.ledger.quests - led1, 123);
+  check('ledger reconciles after rollover', H.econReconcile().ok, true);
+
+  // Old saves: a quest marked done before claiming existed was already paid.
+  const raw = JSON.parse(store.get('tcp.save.v1') || JSON.stringify(S));
+  raw.econ.quests.list.forEach(x => { x.done = true; x.progress = x.target; delete x.claimed; delete x.reward; });
+  store.set('tcp.save.v1', JSON.stringify(raw));
+  const H2 = loadPage({ store, clock });
+  const led2 = H2.S().econ.ledger.quests;
+  check('old-save done quests count as claimed (no double pay)', [H2.econUnclaimed().length, H2.econClaimAll(), H2.S().econ.ledger.quests - led2], [0, 0, 0]);
 }
 
 // ---------------------------------------------------------------------------

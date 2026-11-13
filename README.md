@@ -190,6 +190,7 @@ through saving (the vault), not handouts. Never through odds.
       shows once they land; real chip stacks in a tray and on every bet, moving
       out at the deal and back (or to the dealer) at settlement. All display
       only: drawn from numbers the game already settled.
+- [x] Home tab, notifications (bell + toasts), quests claimed by hand
 - [ ] Supabase: auth, shared chip balance, leaderboard
 - [ ] Profiles (with Supabase): display name, avatar, equipped cosmetics
       visible to friends. Gives the shop more to sell for chips (avatars,

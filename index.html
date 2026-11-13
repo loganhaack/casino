@@ -45,7 +45,7 @@
     background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
   }
   .brand { font-weight: 650; letter-spacing: .02em; }
-  .brand small { display:block; font-weight:400; font-size:11px; color: var(--text-dim); letter-spacing:.06em; text-transform:uppercase; }
+  .brand small { display:block; max-width: 130px; font-weight:400; font-size:10px; line-height:1.35; color: var(--text-dim); letter-spacing:.06em; text-transform:uppercase; }
   .bank { text-align: right; }
   .bank .amt { font: 650 26px/1 var(--mono); color: var(--chip); }
   .bank .lbl { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em; }
@@ -273,8 +273,88 @@
   .tabs button.on { background: var(--chip); color: #1a1a1a; border-color: var(--chip); }
   [hidden] { display: none !important; }
 
+  .tabs .short { display: none; }
+  .tabs { gap: 5px; }
+  .tabs button { padding: 7px 11px; }
+  .hdr-end { display: flex; align-items: center; gap: 10px; }
+
+  /* ---------- notifications ---------- */
+  .bellwrap { position: relative; }
+  .bell {
+    position: relative; width: 38px; height: 38px; border-radius: 9px; cursor: pointer;
+    background: rgba(255,255,255,.06); border: 1px solid var(--border); color: var(--text);
+    font-size: 18px; line-height: 1; display: flex; align-items: center; justify-content: center;
+  }
+  .bell .badge {
+    position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 5px;
+    border-radius: 9px; background: var(--lose); color: #fff; font: 700 11px/18px var(--mono); text-align: center;
+  }
+  .notes {
+    position: absolute; right: 0; top: 46px; z-index: 80; width: min(360px, calc(100vw - 24px));
+    max-height: 70vh; overflow-y: auto; background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  }
+  .notes .head { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em; }
+  .notes .head button { background: none; border: none; color: var(--chip); font-size: 12px; cursor: pointer; }
+  .note { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.05); font-size: 13px; }
+  .note.unread { background: rgba(232,197,71,.06); }
+  .note .ic { font-size: 16px; line-height: 1.3; flex: none; width: 20px; text-align: center; }
+  .note .tx { flex: 1; min-width: 0; }
+  .note .tx strong { display: block; font-weight: 650; }
+  .note .tx .when { font-size: 11px; color: var(--text-dim); }
+  .note .empty { color: var(--text-dim); }
+  .btn-sm {
+    flex: none; padding: 6px 10px; font-size: 12px; font-weight: 700; border-radius: 6px; cursor: pointer;
+    border: none; background: var(--chip); color: #1a1a1a; white-space: nowrap;
+  }
+  .btn-sm.ghost { background: rgba(255,255,255,.1); color: var(--text); border: 1px solid var(--border); }
+  .btn-sm:disabled { opacity: .35; cursor: not-allowed; }
+  .toasts {
+    position: fixed; right: 16px; bottom: 16px; z-index: 90; display: flex; flex-direction: column;
+    gap: 8px; width: min(340px, calc(100vw - 32px)); pointer-events: none;
+  }
+  .toast {
+    pointer-events: auto; display: flex; gap: 10px; align-items: center; padding: 10px 12px;
+    background: var(--panel-2); border: 1px solid var(--chip); border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.5); font-size: 13px; animation: toastIn .25s ease-out both;
+  }
+  .toast.out { animation: toastOut .25s ease-in both; }
+  .toast .tx { flex: 1; min-width: 0; }
+  .toast .tx strong { display: block; }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(12px); } }
+  @keyframes toastOut { to { opacity: 0; transform: translateY(12px); } }
+
+  /* ---------- home ---------- */
+  .home-hero { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; }
+  .home-hero .panel { display: flex; flex-direction: column; gap: 8px; }
+  .home-hero .big { font: 650 30px/1.1 var(--mono); color: var(--chip); }
+  .home-hero .sub { font-size: 12px; color: var(--text-dim); }
+  .home-hero .xpbar { height: 8px; }
+  .todo { display: flex; flex-direction: column; gap: 8px; }
+  .todo .item2 { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 9px; background: rgba(232,197,71,.08); border: 1px solid rgba(232,197,71,.35); font-size: 13px; }
+  .todo .item2 .tx { flex: 1; min-width: 0; }
+  .todo .item2 .tx strong { display: block; }
+  .todo .none { font-size: 13px; color: var(--text-dim); }
+  .games { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 14px; }
+  .gamecard {
+    border-radius: 12px; padding: 14px; cursor: pointer; border: 1px solid rgba(255,255,255,.1);
+    background: radial-gradient(ellipse at 50% 0%, var(--felt) 0%, var(--felt-dark) 100%);
+    display: flex; flex-direction: column; gap: 6px; text-align: left; color: var(--text); font: inherit;
+  }
+  .gamecard:hover { border-color: var(--chip); }
+  .gamecard .nm { font-weight: 700; font-size: 15px; }
+  .gamecard .ed { font: 600 12px var(--mono); color: var(--chip); }
+  .gamecard .ds { font-size: 12px; color: rgba(255,255,255,.65); }
+  .gamecard .mine { font: 12px var(--mono); color: rgba(255,255,255,.55); }
+  .gamecard .go { margin-top: auto; align-self: flex-start; }
+  .mini-quest { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.06); font-size: 13px; }
+  .mini-quest .tx { flex: 1; min-width: 0; }
+  .mini-quest .qbar { height: 5px; background: rgba(255,255,255,.08); border-radius: 3px; margin-top: 4px; overflow: hidden; }
+  .mini-quest .qbar div { height: 100%; background: var(--win); }
+  .mini-quest .st { font: 12px var(--mono); color: var(--text-dim); flex: none; }
+
   /* ---------- rank / events ---------- */
-  .rank { min-width: 150px; }
+  .rank { min-width: 130px; }
   .rank-line { font-size: 13px; font-weight: 650; white-space: nowrap; }
   .rank .tier { font-size: 11px; padding: 1px 7px; border-radius: 9px; background: rgba(232,197,71,.15); color: var(--chip); margin-left: 4px; }
   .rank .ptitle { font-size: 11px; color: var(--text-dim); margin-left: 4px; font-style: italic; }
@@ -354,6 +434,16 @@
     .bank .amt { font-size: 20px; }
     .tabs { width: 100%; order: -1; }
     .tabs button { flex: 1 1 0; min-width: 0; padding: 6px 2px; font-size: 12px; }
+    .tabs .long { display: none; } .tabs .short { display: inline; }
+    .bell { width: 34px; height: 34px; font-size: 16px; }
+    .toasts { left: 12px; right: 12px; bottom: 12px; width: auto; }
+    .home-hero { grid-template-columns: 1fr; gap: 8px; }
+    .home-hero .big { font-size: 24px; }
+    .games { grid-template-columns: 1fr; gap: 8px; margin-top: 8px; }
+    .gamecard { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 10px 12px; }
+    .gamecard .nm { flex: 1 1 60%; }
+    .gamecard .ds { display: none; }
+    .gamecard .go { margin-top: 0; }
     .rank { flex: 1; min-width: 0; }
     .eventbar { margin: 0 0 8px; padding: 6px 10px; font-size: 12px; }
 
@@ -405,7 +495,8 @@
   <header>
     <div class="brand">Play-chip casino<small>verifiable build &middot; no real money</small></div>
     <nav class="tabs">
-      <button data-game="tcp">Three Card Poker</button>
+      <button data-game="home">Home</button>
+      <button data-game="tcp"><span class="long">Three Card Poker</span><span class="short">Poker</span></button>
       <button data-game="bj">Blackjack</button>
       <button data-game="fb">Free Bet</button>
       <button data-game="rewards">Rewards</button>
@@ -415,12 +506,49 @@
       <div class="xpbar"><div id="xpFill"></div></div>
       <div class="rank-sub" id="xpText"></div>
     </div>
-    <div class="bank">
-      <div class="amt" id="bank">0</div>
-      <div class="lbl">chips</div>
+    <div class="hdr-end">
+      <div class="bank">
+        <div class="amt" id="bank">0</div>
+        <div class="lbl">chips</div>
+      </div>
+      <div class="bellwrap">
+        <button class="bell" id="bell" aria-label="Notifications" title="Notifications">&#128276;<span class="badge" id="bellBadge" hidden>0</span></button>
+        <div class="notes" id="notesPanel" hidden></div>
+      </div>
     </div>
   </header>
   <div class="eventbar" id="eventBar" hidden></div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <!-- ===================== HOME ===================== -->
+  <section id="game-home" hidden>
+    <div class="home-hero">
+      <div class="panel" id="homeRank"></div>
+      <div class="panel">
+        <h3>Waiting for you</h3>
+        <div class="todo" id="homeTodo"></div>
+      </div>
+    </div>
+    <div class="games" id="homeGames"></div>
+    <div class="grid2">
+      <div class="panel">
+        <h3>Today&rsquo;s quests</h3>
+        <div id="homeQuests"></div>
+      </div>
+      <div class="panel">
+        <h3>Recent</h3>
+        <div id="homeFeed"></div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      <h3>Why you can trust the odds here</h3>
+      <div class="hint" style="font-size:13px;color:var(--text-dim);margin:0">
+        Every game&rsquo;s math is computed exactly by brute force and the real game code is tested against it.
+        The shuffle is the same for everyone: your rank, balance and history never change a card.
+        Chips are free and can&rsquo;t be bought or cashed out. Each table shows its own observed-vs-exact numbers.
+      </div>
+    </div>
+  </section>
 
   <!-- ===================== REWARDS ===================== -->
   <section id="game-rewards" hidden>
@@ -910,7 +1038,7 @@ const blankState = () => ({
     catCounts: [0,0,0,0,0,0],   // player 3-card categories
   },
   history: [],                   // capped; full detail for CSV export
-  game: 'tcp',                   // which tab is showing: 'tcp' | 'bj' | 'fb' | 'rewards'
+  game: 'home',                  // which tab is showing: 'home' | 'tcp' | 'bj' | 'fb' | 'rewards'
   tcpRound: null,                // TCP hand awaiting play/fold, persisted so a reload can't eat the stake
   bj: blankBj(),                 // classic blackjack table
   fb: blankBj(),                 // Free Bet blackjack table (same shape)
@@ -930,6 +1058,8 @@ function blankEcon() {
     ledger: { opening: RULES.startingChips, bonusWheel: 0, rescueWheel: 0, quests: 0, promo: 0, interest: 0, shop: 0, admin: 0 },
     vault: { balance: 0, day: '', minToday: 0 },   // saved chips: can't be bet, earn capped daily interest
     spins: [],    // recent wheel results, newest last (capped)
+    notes: [],    // notifications, newest last (capped). UI only: never decides anything
+    seen: {},     // notification de-dupe keys (e.g. which bonus-wheel readiness was announced)
   };
 }
 
@@ -1004,6 +1134,8 @@ function load() {
       s.econ.ledger = Object.assign(e.ledger, (parsed.econ || {}).ledger || {});
       s.econ.equipped = Object.assign(blankEcon().equipped, s.econ.equipped);
       s.econ.vault = Object.assign(blankEcon().vault, (parsed.econ || {}).vault || {});
+      // Saves from before quests were claimed by hand: a finished quest there was already paid.
+      for (const q of s.econ.quests.list || []) if (q.done && q.claimed === undefined) q.claimed = true;
       if (!parsed.econ) {
         // Save from before the ledger existed: whatever isn't explained by game
         // results (old timed bonuses, broke floors) becomes the opening balance.
@@ -2026,12 +2158,14 @@ function bjRenderRules() {
 /* ---------- table switching ---------- */
 
 function showGame(g) {
-  S.game = BJ_TABLES[g] || g === 'rewards' ? g : 'tcp';
+  S.game = BJ_TABLES[g] || g === 'rewards' || g === 'home' ? g : 'tcp';
   const isBj = !!BJ_TABLES[S.game];
   $('game-bj').hidden = !isBj;
   $('game-tcp').hidden = S.game !== 'tcp';
   $('game-rewards').hidden = S.game !== 'rewards';
+  $('game-home').hidden = S.game !== 'home';
   if (S.game === 'rewards') econRenderRewards();
+  if (S.game === 'home') renderHome();
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.game === S.game));
   if (isBj) {
     bjTable = S.game;
@@ -2076,6 +2210,19 @@ function econAddXp(base) {
 function econEnsureQuests() {
   const day = ECON.dayKey(now());
   if (S.econ.quests.day !== day) {
+    // Yesterday's finished-but-unclaimed quests are paid, not lost.
+    const old = S.econ.quests;
+    let owed = 0, xp = 0;
+    for (const q of old.list || []) {
+      if (!q.done || q.claimed) continue;
+      const rw = q.reward || ECON.questReward(old.tier, now());
+      q.claimed = true; owed += rw.chips; xp += rw.xp;
+    }
+    if (owed) {
+      econGrant('quests', owed);
+      econAddXp(xp);
+      notify('quest', 'Unclaimed quests paid', `Yesterday's finished quests: +${owed.toLocaleString()} chips, +${xp} XP.`);
+    }
     const tier = econTier();
     S.econ.quests = { day, tier, list: ECON.dailyQuests(day, tier) };
   }
@@ -2097,25 +2244,284 @@ function econAfterRound(facts) {
     lines.push(`<span class="win">${p.event.name} promo: +${p.amount.toLocaleString()}</span>`);
   }
 
-  let leveled = econAddXp(ECON.xpForRound(facts.wagered, facts.minBet));
+  const leveled = econAddXp(ECON.xpForRound(facts.wagered, facts.minBet));
   const qTier = S.econ.quests.tier;
-  for (const q of S.econ.quests.list) {
+  S.econ.quests.list.forEach((q, i) => {
     if (ECON.advanceQuest(q, facts)) {
-      const rw = ECON.questReward(qTier, t);
-      econGrant('quests', rw.chips);
-      leveled = econAddXp(rw.xp) || leveled;
-      lines.push(`<span class="win">Quest complete: ${ECON.questText(q)}. +${rw.chips.toLocaleString()} chips, +${rw.xp} XP</span>`);
+      // The reward is fixed the moment the quest completes (so a Quest Rush
+      // completion stays doubled), but paid only when claimed.
+      q.reward = ECON.questReward(qTier, t);
+      q.claimed = false;
+      lines.push(`<span class="win">Quest complete: ${ECON.questText(q)}. Claim ${q.reward.chips.toLocaleString()} chips from the bell or Home.</span>`);
+      notify('quest', 'Quest complete', `${ECON.questText(q)}: ${q.reward.chips.toLocaleString()} chips + ${q.reward.xp} XP waiting.`,
+        { type: 'claim', day: S.econ.quests.day, i });
     }
-  }
-  if (leveled) {
-    const tierAfter = econTier();
-    lines.push(`<span class="win">Level up: you're level ${leveled}` +
-      (tierAfter > tierBefore ? `, now ${ECON.TIERS[tierAfter].name}! Table limit ${ECON.TIERS[tierAfter].maxBet.toLocaleString()}, ` +
-        `bigger wheel prizes and quests.` : '.') + '</span>');
+  });
+  if (leveled) lines.push(econLevelUpNote(leveled, tierBefore));
+  if (econRescueReady() && !S.econ.seen.rescue) {
+    S.econ.seen.rescue = true;
+    notify('rescue', 'Rescue Wheel unlocked', `You're under ${ECON.WHEELS.rescue.availableBelow} chips. It's free, as often as you need it.`, { type: 'go', tab: 'rewards' });
   }
   econRenderHeader();
   if (S.game === 'rewards') econRenderRewards();
+  if (S.game === 'home') renderHome();
   return lines;
+}
+
+/** Message line for a level up, plus a notification. */
+function econLevelUpNote(level, tierBefore) {
+  const tierAfter = econTier();
+  const up = tierAfter > tierBefore;
+  notify('level', up ? `${ECON.TIERS[tierAfter].name} unlocked` : `Level ${level}`,
+    up ? `Level ${level}. Table limit ${ECON.TIERS[tierAfter].maxBet.toLocaleString()}, bigger wheel prizes and quests.`
+       : `You reached level ${level}.`, { type: 'go', tab: 'home' });
+  return `<span class="win">Level up: you're level ${level}` +
+    (up ? `, now ${ECON.TIERS[tierAfter].name}! Table limit ${ECON.TIERS[tierAfter].maxBet.toLocaleString()}, ` +
+      `bigger wheel prizes and quests.` : '.') + '</span>';
+}
+
+/* ---------- home ---------- */
+
+const HOME_GAMES = [
+  { id: 'tcp', name: 'Three Card Poker', edge: () => 'House edge 3.37% of the ante (exact)',
+    ds: 'Beat the dealer\'s three cards. Pair Plus and 6 Card Bonus on the side.',
+    net: () => S.stats.net, n: () => S.stats.hands, unit: 'hands' },
+  { id: 'bj', name: 'Blackjack', edge: () => `House edge ${(100 * RULES.bjHouseEdge).toFixed(2)}% with basic strategy`,
+    ds: '6 decks, dealer peeks. 21+3 and Perfect Pairs side bets.',
+    net: () => S.bj.stats.net, n: () => S.bj.stats.rounds, unit: 'rounds' },
+  { id: 'fb', name: 'Free Bet Blackjack', edge: () => `House edge ${(100 * RULES.fbHouseEdge).toFixed(2)}% with its own strategy`,
+    ds: 'Free doubles and splits on the house. Dealer 22 pushes.',
+    net: () => S.fb.stats.net, n: () => S.fb.stats.rounds, unit: 'rounds' },
+];
+
+function renderHome() {
+  econEnsureQuests();
+  const t = now();
+  const lv = econLevel(), ti = econTier(), tier = ECON.TIERS[ti], next = ECON.TIERS[ti + 1];
+  const vault = S.econ.vault.balance;
+  $('homeRank').innerHTML =
+    `<h3>Your bankroll</h3>` +
+    `<div class="big">${S.chips.toLocaleString()}</div>` +
+    `<div class="sub">chips on hand${vault ? ` &middot; ${vault.toLocaleString()} in the vault &middot; ${(S.chips + vault).toLocaleString()} total` : ''}</div>` +
+    pileHTML(S.chips, { max: 6 }) +
+    `<div style="margin-top:6px"><strong>Level ${lv.level}</strong> <span class="tier" style="font-size:11px;padding:1px 7px;border-radius:9px;background:rgba(232,197,71,.15);color:var(--chip)">${tier.name}</span>` +
+    ` <span class="sub">table limit ${tier.maxBet.toLocaleString()}</span></div>` +
+    `<div class="xpbar"><div style="width:${(100 * lv.into / lv.need).toFixed(1)}%"></div></div>` +
+    `<div class="sub">${lv.into} / ${lv.need} XP to level ${lv.level + 1}` +
+    (next ? ` &middot; ${next.name} at level ${next.minLevel} (limit ${next.maxBet.toLocaleString()})` : ' &middot; top tier') + '</div>';
+
+  // Things you can act on right now.
+  const todo = [];
+  const un = econUnclaimed();
+  for (const { q, i } of un) {
+    const r = q.reward || ECON.questReward(S.econ.quests.tier, t);
+    todo.push(`<div class="item2"><span class="ic">${NOTE_ICON.quest}</span><div class="tx"><strong>Quest reward</strong>${ECON.questText(q)}</div>` +
+      `<button class="btn-sm" data-claim="${i}" data-day="${S.econ.quests.day}">Claim ${r.chips.toLocaleString()}</button></div>`);
+  }
+  if (un.length > 1) todo.push(`<button class="btn-sm" data-claimall="1">Claim all ${un.length}</button>`);
+  const bonusWait = econBonusReadyAt() - t.getTime();
+  if (bonusWait <= 0) {
+    todo.push(`<div class="item2"><span class="ic">${NOTE_ICON.wheel}</span><div class="tx"><strong>Bonus Wheel</strong>Your free spin is ready.</div>` +
+      `<button class="btn-sm" data-go="rewards">Spin</button></div>`);
+  }
+  if (econRescueReady()) {
+    todo.push(`<div class="item2"><span class="ic">${NOTE_ICON.rescue}</span><div class="tx"><strong>Rescue Wheel</strong>Free while you're under ${ECON.WHEELS.rescue.availableBelow} chips.</div>` +
+      `<button class="btn-sm" data-go="rewards">Spin</button></div>`);
+  }
+  for (const e of ECON.activeEvents(t)) {
+    todo.push(`<div class="item2"><span class="ic">${NOTE_ICON.event}</span><div class="tx"><strong>${e.name}</strong>${e.desc}</div></div>`);
+  }
+  if (!todo.length) {
+    todo.push(`<div class="none">All caught up. Next Bonus Wheel spin in ${fmtWait(bonusWait)}.</div>`);
+  }
+  $('homeTodo').innerHTML = todo.join('');
+
+  $('homeGames').innerHTML = HOME_GAMES.map(g => {
+    const n = g.n(), net = g.net();
+    return `<button class="gamecard" data-go="${g.id}"><span class="nm">${g.name}</span>` +
+      `<span class="ed">${g.edge()}</span><span class="ds">${g.ds}</span>` +
+      `<span class="mine">${n ? `You: ${n.toLocaleString()} ${g.unit}, net <span class="${net > 0 ? 'win' : net < 0 ? 'lost' : 'pushc'}">${net >= 0 ? '+' : ''}${net.toLocaleString()}</span>` : 'Not played yet'}</span>` +
+      `<span class="btn-sm go">Play</span></button>`;
+  }).join('');
+
+  const qs = S.econ.quests;
+  const rw = ECON.questReward(qs.tier, t);
+  $('homeQuests').innerHTML = qs.list.map((q, i) => {
+    const r = q.reward || rw;
+    const right = q.claimed ? '<span class="st">&#10003; claimed</span>'
+      : q.done ? `<button class="btn-sm" data-claim="${i}" data-day="${qs.day}">Claim ${r.chips.toLocaleString()}</button>`
+      : `<span class="st">${q.progress}/${q.target}</span>`;
+    return `<div class="mini-quest"><div class="tx">${ECON.questText(q)}` +
+      `<div class="qbar"><div style="width:${(100 * q.progress / q.target).toFixed(0)}%"></div></div></div>${right}</div>`;
+  }).join('') + `<div class="hint">${r0(rw.chips)} chips + ${rw.xp} XP each. <a href="#" data-go="rewards">All rewards</a></div>`;
+
+  const feed = S.econ.notes.slice(-6).reverse();
+  $('homeFeed').innerHTML = feed.length
+    ? feed.map(noteRowHTML).join('')
+    : '<div class="hint" style="margin:0">Play a few rounds: finished quests, level ups and wheel spins show up here.</div>';
+}
+const r0 = n => n.toLocaleString();
+
+/* ---------- quest claiming ---------- */
+
+/** Quests finished and not yet claimed: [{ q, i }]. */
+const econUnclaimed = () => S.econ.quests.list.map((q, i) => ({ q, i })).filter(x => x.q.done && !x.q.claimed);
+
+/**
+ * Pay one finished quest's reward, exactly once, through the ledger.
+ * `day` guards against a stale button from yesterday's list. Returns the
+ * reward, or null if there was nothing to claim.
+ */
+function econClaimQuest(i, day) {
+  econEnsureQuests();
+  const qs = S.econ.quests;
+  if (day && day !== qs.day) return null;
+  const q = qs.list[i];
+  if (!q || !q.done || q.claimed) return null;
+  const rw = q.reward || ECON.questReward(qs.tier, now());
+  const tierBefore = econTier();
+  q.claimed = true;
+  econGrant('quests', rw.chips);
+  const leveled = econAddXp(rw.xp);
+  if (leveled) econLevelUpNote(leveled, tierBefore);
+  econResolveNotes(n => n.action && n.action.type === 'claim' && n.action.day === qs.day && n.action.i === i);
+  save();
+  renderBank(); econRenderHeader(); renderNotes();
+  if (S.game === 'rewards') econRenderRewards();
+  if (S.game === 'home') renderHome();
+  return rw;
+}
+
+function econClaimAll() {
+  let chips = 0;
+  for (const { i } of econUnclaimed()) { const rw = econClaimQuest(i); if (rw) chips += rw.chips; }
+  return chips;
+}
+
+/** Button handler: claim, then celebrate with a toast. */
+function claimClick(i, day) {
+  const rw = econClaimQuest(i, day);
+  if (rw) toast('chips', 'Claimed', `+${rw.chips.toLocaleString()} chips, +${rw.xp} XP`);
+}
+
+function claimAllClick() {
+  const n = econUnclaimed().length;
+  const chips = econClaimAll();
+  if (chips) toast('chips', `Claimed ${n} quest${n > 1 ? 's' : ''}`, `+${chips.toLocaleString()} chips`);
+}
+
+/* ===========================================================================
+   NOTIFICATIONS: UI only
+   ---------------------------------------------------------------------------
+   A saved list (S.econ.notes) shown under the bell, plus short-lived toasts.
+   They announce things the economy already did or offers (a finished quest,
+   a level, a ready wheel, vault interest, an event). Nothing reads them to
+   decide a game or a grant; the claim button calls econClaimQuest, which
+   re-checks everything itself.
+   =========================================================================== */
+
+const NOTE_ICON = { quest: '&#127942;', level: '&#11088;', wheel: '&#127905;', rescue: '&#9875;', vault: '&#127974;', event: '&#127881;', chips: '&#129689;', info: '&#8505;' };
+let noteSeq = 0;
+
+function notify(kind, title, body, action) {
+  const n = { id: Date.now() + '-' + (noteSeq++), t: Date.now(), kind, title, body, action: action || null, read: false, done: false };
+  S.econ.notes.push(n);
+  if (S.econ.notes.length > 40) S.econ.notes.splice(0, S.econ.notes.length - 40);
+  toast(kind, title, body, n);
+  renderNotes();
+  return n;
+}
+
+/** Mark notifications whose action is finished (e.g. a quest claimed elsewhere). */
+function econResolveNotes(match) {
+  for (const n of S.econ.notes) if (match(n)) { n.done = true; n.read = true; }
+}
+
+function noteActionHTML(n) {
+  if (!n.action || n.done) return '';
+  if (n.action.type === 'claim') {
+    const q = S.econ.quests.day === n.action.day && S.econ.quests.list[n.action.i];
+    if (!q || q.claimed) return '';
+    return `<button class="btn-sm" data-claim="${n.action.i}" data-day="${n.action.day}">Claim</button>`;
+  }
+  if (n.action.type === 'go') return `<button class="btn-sm ghost" data-go="${n.action.tab}">Open</button>`;
+  return '';
+}
+
+/** Pop-up for a few seconds; the same item stays in the bell list. Browser only. */
+function toast(kind, title, body, n) {
+  const box = $('toasts');
+  if (!box || typeof box.insertAdjacentHTML !== 'function') return;
+  const id = 'toast-' + (noteSeq++);
+  box.insertAdjacentHTML('beforeend',
+    `<div class="toast" id="${id}"><span class="ic">${NOTE_ICON[kind] || NOTE_ICON.info}</span>` +
+    `<div class="tx"><strong>${title}</strong>${body}</div>${n ? noteActionHTML(n) : ''}</div>`);
+  while (box.children.length > 3) box.firstElementChild.remove();
+  const el = document.getElementById(id);
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 260); }, n && n.action && n.action.type === 'claim' ? 8000 : 5000);
+}
+
+function fmtAgo(t) {
+  const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  return `${Math.floor(s / 86400)} d ago`;
+}
+
+function noteRowHTML(n) {
+  return `<div class="note${n.read ? '' : ' unread'}"><span class="ic">${NOTE_ICON[n.kind] || NOTE_ICON.info}</span>` +
+    `<div class="tx"><strong>${n.title}</strong>${n.body}<div class="when">${fmtAgo(n.t)}</div></div>${noteActionHTML(n)}</div>`;
+}
+
+function renderNotes() {
+  const unread = S.econ.notes.filter(n => !n.read).length;
+  $('bellBadge').hidden = !unread;
+  $('bellBadge').textContent = unread > 9 ? '9+' : String(unread);
+  const panel = $('notesPanel');
+  if (panel.hidden) return;
+  const list = S.econ.notes.slice().reverse();
+  const claimable = econUnclaimed().length;
+  panel.innerHTML = `<div class="head"><span>Notifications</span><span>` +
+    (claimable > 1 ? `<button data-claimall="1">Claim all (${claimable})</button> ` : '') +
+    (list.length ? '<button data-clearnotes="1">Clear</button>' : '') + '</span></div>' +
+    (list.length ? list.map(noteRowHTML).join('') : '<div class="note"><span class="empty">Nothing yet. Finished quests, level ups and ready wheels show up here.</span></div>');
+}
+
+function toggleNotes(open) {
+  const panel = $('notesPanel');
+  panel.hidden = open === undefined ? !panel.hidden : !open;
+  if (!panel.hidden) {
+    renderNotes();
+    // Opening the list counts as reading everything except claims still waiting.
+    for (const n of S.econ.notes) if (!(n.action && n.action.type === 'claim' && noteActionHTML(n))) n.read = true;
+    save();
+  }
+  renderNotes();
+}
+
+/**
+ * Time-based announcements, checked at boot and every 15s: bonus wheel ready,
+ * an event starting. De-duplicated through S.econ.seen so each fires once.
+ */
+function econCheckTimers() {
+  const t = now();
+  const readyAt = econBonusReadyAt();
+  if (t.getTime() >= readyAt && S.econ.seen.bonus !== readyAt) {
+    S.econ.seen.bonus = readyAt;
+    if (S.econ.lastBonusSpin) notify('wheel', 'Bonus Wheel ready', 'Your free spin is back.', { type: 'go', tab: 'rewards' });
+  }
+  const day = ECON.dayKey(t);
+  const evs = Array.isArray(S.econ.seen.events) ? S.econ.seen.events : (S.econ.seen.events = []);
+  for (const e of ECON.activeEvents(t)) {
+    const key = e.id + ':' + day;
+    if (evs.includes(key)) continue;
+    evs.push(key);
+    if (evs.length > 20) evs.shift();
+    notify('event', `${e.name} is on`, e.desc, { type: 'go', tab: 'home' });
+  }
+  if (!econRescueReady()) S.econ.seen.rescue = false;
+  save();
 }
 
 /* ---------- wheels ---------- */
@@ -2216,7 +2622,10 @@ function econSpinClick(which) {
 /** Pay any interest owed for finished days. Call before any vault move. */
 function econAccrueVault() {
   const paid = ECON.vaultAccrue(S.econ.vault, ECON.dayKey(now()), econTier());
-  if (paid) S.econ.ledger.interest += paid;   // credited into the vault, not to chips
+  if (paid) {
+    S.econ.ledger.interest += paid;   // credited into the vault, not to chips
+    notify('vault', 'Vault interest paid', `+${paid.toLocaleString()} chips into your vault.`, { type: 'go', tab: 'rewards' });
+  }
   return paid;
 }
 
@@ -2338,12 +2747,17 @@ function econRenderRewards() {
   const qs = S.econ.quests;
   const rw = ECON.questReward(qs.tier, t);
   const midnight = new Date(t.getFullYear(), t.getMonth(), t.getDate() + 1);
-  $('questList').innerHTML = qs.list.map(q =>
-    `<div class="quest${q.done ? ' done' : ''}"><div>${q.done ? '&#10003; ' : ''}${ECON.questText(q)}</div>` +
-    `<div class="qbar"><div style="width:${(100 * q.progress / q.target).toFixed(0)}%"></div></div>` +
-    `<div class="qmeta"><span>${q.progress} / ${q.target}</span><span>${rw.chips.toLocaleString()} chips + ${rw.xp} XP</span></div></div>`
-  ).join('') + `<div class="hint">${ECON.TIERS[qs.tier].name} quests. New set in ${fmtWait(midnight - t)}. ` +
-    'Friends at the same rank get the same quests.</div>';
+  $('questList').innerHTML = qs.list.map((q, i) => {
+    const r = q.reward || rw;
+    const claimable = q.done && !q.claimed;
+    return `<div class="quest${q.claimed ? ' done' : ''}"><div style="display:flex;gap:10px;align-items:center">` +
+      `<span style="flex:1">${q.claimed ? '&#10003; ' : ''}${ECON.questText(q)}</span>` +
+      (claimable ? `<button class="btn-sm" data-claim="${i}" data-day="${qs.day}">Claim ${r.chips.toLocaleString()}</button>` : '') + '</div>' +
+      `<div class="qbar"><div style="width:${(100 * q.progress / q.target).toFixed(0)}%"></div></div>` +
+      `<div class="qmeta"><span>${q.claimed ? 'Claimed' : claimable ? 'Done: claim your reward' : `${q.progress} / ${q.target}`}</span>` +
+      `<span>${r.chips.toLocaleString()} chips + ${r.xp} XP</span></div></div>`;
+  }).join('') + `<div class="hint">${ECON.TIERS[qs.tier].name} quests. New set in ${fmtWait(midnight - t)}. ` +
+    'Unclaimed rewards are paid automatically when the day rolls over. Friends at the same rank get the same quests.</div>';
 
   // Events
   const live = ECON.activeEvents(t);
@@ -2643,14 +3057,41 @@ $('vaultIn').onclick = () => { if (!econVault(vaultAmt())) $('rewardsMsg').textC
 $('vaultOut').onclick = () => { if (!econVault(-vaultAmt())) $('rewardsMsg').textContent = 'Enter an amount that is in the vault.'; };
 $('vaultAllIn').onclick = () => { if (S.chips > 0) econVault(S.chips); };
 $('vaultAllOut').onclick = () => { if (S.econ.vault.balance > 0) econVault(-S.econ.vault.balance); };
-// Countdowns and event start/end. Browser only (the Node tests have no timers).
+/* ---------- notifications, claim buttons, links ----------
+ * One delegated handler for every Claim / Open / Play button, wherever it was
+ * rendered (bell list, toasts, Home, Rewards). */
+if (typeof document.addEventListener === 'function') {
+  document.addEventListener('click', e => {
+    const el = e.target && e.target.closest ? e.target.closest('[data-claim],[data-claimall],[data-go],[data-clearnotes],#bell') : null;
+    if (!el) {
+      if (!$('notesPanel').hidden && !(e.target.closest && e.target.closest('#notesPanel'))) toggleNotes(false);
+      return;
+    }
+    if (el.id === 'bell') { toggleNotes(); return; }
+    e.preventDefault();
+    if (el.dataset.claim !== undefined) claimClick(parseInt(el.dataset.claim, 10), el.dataset.day);
+    else if (el.dataset.claimall) claimAllClick();
+    else if (el.dataset.clearnotes) { S.econ.notes = S.econ.notes.filter(n => noteActionHTML(n)); save(); renderNotes(); if (S.game === 'home') renderHome(); }
+    else if (el.dataset.go) { toggleNotes(false); showGame(el.dataset.go); if (typeof window !== 'undefined' && window.scrollTo) window.scrollTo(0, 0); }
+  });
+}
+
+// Countdowns, event start/end, wheel-ready notices. Browser only (the Node tests have no timers).
 if (typeof setInterval === 'function') {
-  setInterval(() => { econRenderHeader(); if (S.game === 'rewards' && !wheelSpinning) econRenderRewards(); }, 15000);
+  setInterval(() => {
+    econEnsureQuests();
+    econCheckTimers();
+    econRenderHeader();
+    if (S.game === 'rewards' && !wheelSpinning) econRenderRewards();
+    if (S.game === 'home') renderHome();
+  }, 15000);
 }
 
 /* ---------- boot ---------- */
 econEnsureQuests();
 econAccrueVault();
+econCheckTimers();
+renderNotes();
 applyCosmetics();
 econRenderHeader();
 renderBank();

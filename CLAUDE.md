@@ -148,6 +148,15 @@ economy section only applies those rules.
 - **Quests** are seeded by date + tier (`dailyQuests`), deterministic, so
   friends at a rank share them. The seeded PRNG there is for quest selection
   only. Anything with stakes uses crypto.
+- **Quest claiming.** Completing a quest fixes its `reward` (so a Quest Rush
+  completion stays doubled) but pays nothing; `econClaimQuest(i, day)` pays it
+  once through `econGrant('quests')`. Unclaimed rewards are paid at day
+  rollover in `econEnsureQuests`, never lost. Old saves' done quests load as
+  `claimed: true` (they were paid under the old rule).
+- **Notifications** (`S.econ.notes`, bell + toasts) and the **Home** tab are
+  UI only. They announce what the economy did or offers; nothing reads them to
+  decide a game or a grant. Claim buttons call `econClaimQuest`, which
+  re-checks everything itself. De-dupe keys live in `S.econ.seen`.
 - **Wheels** draw slices at angles proportional to their weights. Keep it
   that way: the picture is the odds.
 - **Game harnesses** (`test-payouts.js`, `test-blackjack-payouts.js`) check
