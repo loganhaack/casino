@@ -187,7 +187,9 @@ through saving (the vault), not handouts. Never through odds.
 - [x] 21+3 and Perfect Pairs: exact enumeration, cross-checked combination counts
 - [x] Economy: ranks, table limits, wheels, quests, events, cosmetics shop, ledger
 - [x] Table feel: cards are dealt and turned over in sequence, and the result
-      shows once they land (display only; settlement has already happened)
+      shows once they land; real chip stacks in a tray and on every bet, moving
+      out at the deal and back (or to the dealer) at settlement. All display
+      only: drawn from numbers the game already settled.
 - [ ] Supabase: auth, shared chip balance, leaderboard
 - [ ] Profiles (with Supabase): display name, avatar, equipped cosmetics
       visible to friends. Gives the shop more to sell for chips (avatars,

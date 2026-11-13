@@ -111,6 +111,41 @@
   .later { animation: fadeIn .2s ease-out var(--later, 0ms) both; }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   .felt.busy .actions button { pointer-events: none; opacity: .55; }
+
+  /* ---------- chips (display only: drawn from the same numbers the game uses) ---------- */
+  :root { --cs: 30px; }
+  .pile { display: inline-flex; align-items: flex-end; gap: 3px; vertical-align: bottom; }
+  .stack { position: relative; width: var(--cs); flex: none; }
+  .chip {
+    position: absolute; left: 0; width: var(--cs); height: var(--cs); border-radius: 50%;
+    background:
+      radial-gradient(circle, var(--c) 0 47%, var(--e) 48% 53%, transparent 54%),
+      repeating-conic-gradient(var(--e) 0 12deg, var(--c) 12deg 45deg);
+    box-shadow: 0 1px 0 rgba(0,0,0,.45), 0 2px 3px rgba(0,0,0,.35);
+    border: 1px solid rgba(0,0,0,.4);
+    display: flex; align-items: center; justify-content: center;
+    font: 700 calc(var(--cs) * .3)/1 var(--mono); color: var(--e); letter-spacing: -.04em;
+  }
+  .chip.free { --c: transparent !important; --e: var(--chip) !important; border: 1px dashed var(--chip); box-shadow: none; }
+  .stack .n { position: absolute; left: 50%; bottom: -14px; transform: translateX(-50%); font: 600 10px/1 var(--mono); color: rgba(255,255,255,.6); white-space: nowrap; }
+  .pile.counted { padding-bottom: 14px; }
+  .flychip { position: fixed; left: 0; top: 0; z-index: 60; pointer-events: none; }
+  .gone { animation: fadeOut .2s ease-in var(--gone, 0ms) both; }
+  @keyframes fadeOut { to { opacity: 0; } }
+
+  /* the player's chip tray on the felt */
+  .rail {
+    display: flex; align-items: center; gap: 12px; margin: 0 0 12px; padding: 8px 12px;
+    background: linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,.2));
+    border: 1px solid rgba(255,255,255,.08); border-radius: 10px; min-height: 62px;
+  }
+  .rail .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: rgba(255,255,255,.45); }
+  .rail .amt { font: 650 18px/1.1 var(--mono); color: var(--chip); }
+  .rail .pile { flex: 1; justify-content: flex-end; min-width: 0; overflow: hidden; }
+  .betbox .val { display: flex; align-items: flex-end; justify-content: center; gap: 8px; min-height: 30px; }
+  .bj-bet .betbox .val { justify-content: flex-start; }
+  .bj-hand .row { display: flex; align-items: flex-end; gap: 10px; }
+  .bj-hand .row .pile { min-width: var(--cs); }
   @media (prefers-reduced-motion: reduce) {
     .card.dealing, .card.flipping, .card.flipping::after, .later { animation: none !important; }
   }
@@ -347,6 +382,15 @@
     .bj-bet .betbox button { padding: 5px 0; }
     .shoeinfo { grid-column: 1 / -1; font-size: 11px; }
 
+    :root { --cs: 22px; }
+    .rail { gap: 8px; margin-bottom: 8px; padding: 5px 8px; min-height: 0; }
+    .rail .lbl { font-size: 10px; }
+    .rail .stack .n { display: none; }        /* counts are in each stack's tooltip; room is tight */
+    .rail .pile.counted { padding-bottom: 0; }
+    .rank-sub { display: none; }
+    .rail .amt { font-size: 15px; }
+    .betbox .val { gap: 5px; min-height: 22px; }
+    .bj-bet .betbox .val { justify-content: center; }
     .actions { gap: 6px; }
     .actions button { flex: 1 1 0; min-width: 0; padding: 12px 4px; font-size: 14px; }
     .msg { margin-top: 8px; padding: 8px 10px; font-size: 13px; min-height: 0; }
@@ -476,6 +520,8 @@
         <div class="shoeinfo" id="bjShoe"></div>
       </div>
 
+      <div class="rail" id="bjRail"></div>
+
       <div class="actions" id="bjMainActions">
         <button id="bjDeal">Deal</button>
         <button id="bjHit" disabled>Hit</button>
@@ -553,6 +599,8 @@
         </div>
       </div>
     </div>
+
+    <div class="rail" id="tcpRail"></div>
 
     <div class="actions">
       <button id="btnDeal">Deal</button>
@@ -1081,14 +1129,120 @@ function renderCards(el, cards, faceDown, fxOf, slots = 3) {
   cards.forEach((c, i) => el.appendChild(cardEl(c, faceDown && !$('peek').checked, fxOf && fxOf(i))));
 }
 
+/* ===========================================================================
+   CHIPS: presentation only
+   ---------------------------------------------------------------------------
+   Every stack is drawn from a number the game already has (S.chips, a bet,
+   what a hand returned). Splitting an amount into denominations is only for
+   the picture, and nothing here writes to a balance. Flying chips are copies
+   that animate between the tray, a bet spot and the dealer, then delete
+   themselves. In Node (no layout) they are skipped entirely.
+   =========================================================================== */
+
+const CHIP_DENOMS = [
+  { v: 100000, c: '#a8326e', e: '#f6d2e4', t: '100K' },
+  { v: 25000,  c: '#2f6fc0', e: '#d6e6fb', t: '25K' },
+  { v: 5000,   c: '#c4602a', e: '#fbe1d0', t: '5K' },
+  { v: 1000,   c: '#d9a92a', e: '#3a2a00', t: '1K' },
+  { v: 500,    c: '#6b3fa0', e: '#e8dcf7', t: '500' },
+  { v: 100,    c: '#1e1e22', e: '#e8e4d9', t: '100' },
+  { v: 25,     c: '#2e8b47', e: '#e6f5ea', t: '25' },
+  { v: 5,      c: '#c3302d', e: '#fbe0df', t: '5' },
+  { v: 1,      c: '#ecebe4', e: '#3b5ba5', t: '1' },
+];
+const CHIP = { fly: 420, gap: 90, settleGap: 140 };
+
+/** Largest chips first: 1,260 -> 1K + 100 x2 + 25 x2 + 5 x2. */
+function chipBreakdown(amount) {
+  const out = [];
+  let left = Math.max(0, Math.floor(amount));
+  for (const d of CHIP_DENOMS) {
+    const n = Math.floor(left / d.v);
+    if (n) { out.push({ d, n }); left -= n * d.v; }
+  }
+  return out;
+}
+
+/** Stacks of chips for `amount`. max: chips drawn per stack; counts: label each stack "x n". */
+function pileHTML(amount, { max = 5, counts = false, free = false } = {}) {
+  if (!(amount > 0)) return '<span class="pile"></span>';
+  const stacks = chipBreakdown(amount).map(({ d, n }) => {
+    const shown = Math.min(n, max);
+    let chips = '';
+    for (let i = 0; i < shown; i++) {
+      chips += `<span class="chip${free ? ' free' : ''}" style="--c:${d.c};--e:${d.e};bottom:${i * 3}px">` +
+        `${i === shown - 1 ? (free ? 'F' : d.t) : ''}</span>`;
+    }
+    return `<span class="stack" style="height:calc(var(--cs) + ${(shown - 1) * 3}px)" title="${n} x ${d.v.toLocaleString()}">` +
+      chips + (counts ? `<span class="n">&times;${n}</span>` : '') + '</span>';
+  });
+  return `<span class="pile${counts ? ' counted' : ''}">${stacks.join('')}</span>`;
+}
+
+/** Bet spot contents: the chips, then the exact number (the number is the truth). */
+const betHTML = amount => pileHTML(amount) + `<span>${amount.toLocaleString()}</span>`;
+
+/** Fly a copy of `amount` in chips from one element to another, starting `delay` ms from now. */
+function chipFly(fromEl, toEl, amount, delay, free) {
+  if (ANIM.off || !(amount > 0) || !fromEl || !toEl || !document.body) return;
+  if (typeof fromEl.getBoundingClientRect !== 'function' || typeof toEl.getBoundingClientRect !== 'function') return;
+  const a = fromEl.getBoundingClientRect(), b = toEl.getBoundingClientRect();
+  if (!a.width || !b.width) return;   // that table isn't on screen
+  const el = document.createElement('div');
+  el.className = 'flychip';
+  el.innerHTML = pileHTML(amount, { max: 4, free });
+  document.body.appendChild(el);
+  if (typeof el.animate !== 'function') { el.remove(); return; }
+  const w = el.offsetWidth, h = el.offsetHeight;
+  const at = r => `translate(${r.left + r.width / 2 - w / 2}px, ${r.top + r.height / 2 - h / 2}px)`;
+  const from = at(a), to = at(b);
+  const anim = el.animate([
+    { transform: from, opacity: 0 },
+    { transform: from, opacity: 1, offset: 0.08 },
+    { transform: to, opacity: 1 },
+  ], { duration: CHIP.fly, delay: Math.max(0, delay), easing: 'cubic-bezier(.3,.7,.25,1)', fill: 'both' });
+  const done = () => { if (el.parentNode) el.remove(); };
+  anim.onfinish = done;
+  setTimeout(done, Math.max(0, delay) + CHIP.fly + 150);   // in case onfinish never fires (background tab)
+}
+
+/**
+ * The settle picture for a list of bets. Each flow is { spot, bet, ret, free }:
+ * a loss goes to the dealer, a win is paid from the dealer onto the spot,
+ * then whatever came back slides into your tray. Returns when the last chip
+ * lands (ms from now). Purely visual: `ret` was already credited by the game.
+ */
+function chipSettle(flows, dealerEl, railEl, at) {
+  const collect = at + CHIP.fly + CHIP.settleGap;
+  let end = 0, i = 0;
+  for (const f of flows) {
+    if (!(f.bet > 0 || f.free > 0) || !f.spot) continue;
+    const d = i++ * 60;
+    if (f.ret < f.bet) chipFly(f.spot, dealerEl, f.bet - f.ret, at + d);
+    if (f.ret > f.bet) chipFly(dealerEl, f.spot, f.ret - f.bet, at + d);
+    if (f.free > 0) chipFly(f.spot, dealerEl, f.free, at + d, true);   // house's free chips go home
+    if (f.ret > 0) { chipFly(f.spot, railEl, f.ret, collect + d); end = Math.max(end, collect + d + CHIP.fly); }
+    else end = Math.max(end, at + d + CHIP.fly);
+    f.leaveAt = f.ret > 0 ? collect + d : at + d;
+  }
+  return end;
+}
+
+let railShown = null;
 function renderBank() {
   const v = bankHeld != null && animBusy() ? bankHeld : S.chips;
   $('bank').textContent = v.toLocaleString();
+  if (railShown === v) return;
+  railShown = v;
+  const html = `<div><div class="lbl">Your chips</div><div class="amt">${v.toLocaleString()}</div></div>` +
+    pileHTML(v, { max: 6, counts: true });
+  $('bjRail').innerHTML = html;
+  $('tcpRail').innerHTML = html;
 }
 
 function renderBets() {
   for (const k of ['ante','pp','scb']) {
-    $('bet-' + k).textContent = S.bets[k];
+    $('bet-' + k).innerHTML = betHTML(S.bets[k]);
     $('box-' + k).classList.toggle('active', S.bets[k] > 0);
   }
 }
@@ -1132,8 +1286,11 @@ function deal() {
   S.tcpRound = { player, dealer, stake };   // a reload resumes this hand instead of losing the stake
   clearResults();
   renderBank();
-  // Deal alternately, player first, like a real table.
-  const t0 = animLeft(), now = Date.now();
+  // Chips go out from your tray to each bet, then the cards: alternately, player first.
+  const tc = animLeft();
+  const placed = ['ante', 'pp', 'scb'].filter(k => S.bets[k] > 0);
+  placed.forEach((k, i) => chipFly($('tcpRail'), $('bet-' + k), S.bets[k], tc + i * CHIP.gap));
+  const t0 = tc + (ANIM.off ? 0 : (placed.length - 1) * CHIP.gap + CHIP.fly), now = Date.now();
   renderCards($('playerCards'), player, false, i => ({ deal: t0 + 2 * i * ANIM.step }));
   renderCards($('dealerCards'), dealer, true, i => ({ deal: t0 + (2 * i + 1) * ANIM.step }));
   tcpDealerDealAt = dealer.map((_, i) => now + t0 + (2 * i + 1) * ANIM.step);
@@ -1196,6 +1353,7 @@ function resolve(raised) {
       setResult('pp', `-${S.bets.pp}`, 'lost');
     }
   }
+  const ppRet = returned;                     // display only (chip picture), read after the fact
 
   /* ---- Six Card Bonus ---- */
   let scbCat = null;
@@ -1212,6 +1370,7 @@ function resolve(raised) {
       setResult('scb', `-${S.bets.scb}`, 'lost');
     }
   }
+  const scbRet = returned - ppRet;            // display only
 
   /* ---- Ante / Play ---- */
   let outcome = 'n/a';
@@ -1296,6 +1455,7 @@ function resolve(raised) {
   $('msg').innerHTML += econRescueHint();
 
   for (const el of [$('dealerHand'), $('msg'), $('res-ante'), $('res-pp'), $('res-scb')]) animLater(el, revealed);
+  animHold(tcpChipSettle(raised, ppRet, scbRet, returned - ppRet - scbRet, revealed));
   bankRelease();
   renderStats();
   renderLog();
@@ -1313,6 +1473,15 @@ function tcpButtons(decision) {
   $('btnDeal').disabled = decision;
   $('btnPlay').disabled = !decision || S.chips < S.bets.ante;
   $('btnFold').disabled = !decision;
+}
+
+/** Display only: after the dealer's cards are up, move chips for each bet. */
+function tcpChipSettle(raised, ppRet, scbRet, anteRet, at) {
+  return chipSettle([
+    { spot: $('bet-ante'), bet: S.bets.ante * (raised ? 2 : 1), ret: anteRet },
+    { spot: $('bet-pp'), bet: S.bets.pp, ret: ppRet },
+    { spot: $('bet-scb'), bet: S.bets.scb, ret: scbRet },
+  ], $('dealerCards'), $('tcpRail'), at);
 }
 
 /* ===========================================================================
@@ -1589,14 +1758,29 @@ function bjPlanAnim(r, live, holeHidden) {
   const id = !r ? 0 : TS().stats.rounds + (live ? 1 : 0);   // live round n+1 settles as round n+1
   const dTok = r ? r.dealer.map((c, i) => (i === 1 && holeHidden && !peek ? 'X' : c)) : [];
   const hTok = r ? r.hands.map(h => h.cards.slice()) : [];
-  const out = { dTok, d: [], h: hTok.map(() => []), hEnd: hTok.map(() => 0), end: 0 };
+  const out = { dTok, d: [], h: hTok.map(() => []), hEnd: hTok.map(() => 0), end: 0,
+                chips: null, chipAt: 0, settled: false };
   const prev = bjShown[bjTable];
-  bjShown[bjTable] = { id, d: dTok, h: hTok };
+  bjShown[bjTable] = { id, d: dTok, h: hTok, live, wagered: r ? r.wagered : 0, bets: r ? r.hands.map(h => h.bet) : [] };
   if (!prev || !r || ANIM.off) return out;   // first paint of this table: no animation
 
   const fresh = prev.id !== id;
   const pd = fresh ? [] : prev.d, ph = fresh ? [] : prev.h;
   let t = animLeft();
+
+  // Chips move before cards: your bets go out at the deal; a double, split or
+  // insurance sends the extra out before its card.
+  out.chipAt = t;
+  out.settled = !live && (fresh || prev.live);
+  if (fresh) {
+    out.chips = 'deal';
+    const n = 1 + Object.keys(r.side || {}).length;
+    t += (n - 1) * CHIP.gap + CHIP.fly;
+  } else if (r.wagered > prev.wagered) {
+    out.chips = { add: r.wagered - prev.wagered,
+                  hand: Math.max(0, r.hands.findIndex((h, i) => h.bet !== prev.bets[i])) };
+    t += CHIP.fly;
+  }
   const deal = (arr, i, gap, hand) => {
     arr[i] = Object.assign(arr[i] || {}, { deal: t });
     out.end = Math.max(out.end, t + ANIM.deal);
@@ -1629,10 +1813,10 @@ function bjPlanAnim(r, live, holeHidden) {
 
 function bjRender() {
   renderBank();
-  $('bjBet').textContent = TS().bet;
+  $('bjBet').innerHTML = betHTML(TS().bet);
   for (const k of BJ_SIDE_KEYS) {
     $('bjBox-' + k).hidden = !T().rules[k];
-    $('bjSide-' + k).textContent = TS().side[k];
+    $('bjSide-' + k).innerHTML = betHTML(TS().side[k]);
     $('bjBox-' + k).classList.toggle('active', TS().side[k] > 0);
   }
   const sh = TS().shoe;
@@ -1665,6 +1849,7 @@ function bjRender() {
   // Player hands
   const hEl = $('bjHands');
   hEl.innerHTML = '';
+  const hSpots = [];
   if (!r) {
     const empty = document.createElement('div');
     empty.className = 'cards bj-empty';
@@ -1674,10 +1859,20 @@ function bjRender() {
     r.hands.forEach((h, i) => {
       const box = document.createElement('div');
       box.className = 'bj-hand' + (live && r.phase === 'player' && i === r.active ? ' active' : '');
+      const row = document.createElement('div');
+      row.className = 'row';
       const cards = document.createElement('div');
       cards.className = 'cards';
       h.cards.forEach((c, j) => cards.appendChild(cardEl(c, false, fx.h[i][j])));
-      box.appendChild(cards);
+      row.appendChild(cards);
+      // This hand's chips: your own, plus the house's free chips in Free Bet.
+      const spot = document.createElement('div');
+      spot.className = 'spot';
+      // After a round's chips have been collected, its hands stay on show without them.
+      if (live || fx.settled) spot.innerHTML = pileHTML(h.bet) + (h.free ? pileHTML(h.free, { free: true }) : '');
+      row.appendChild(spot);
+      hSpots.push(spot);
+      box.appendChild(row);
       const meta = document.createElement('div');
       meta.className = 'meta';
       animLater(meta, fx.hEnd[i]);
@@ -1695,6 +1890,31 @@ function bjRender() {
       box.appendChild(meta);
       hEl.appendChild(box);
     });
+  }
+
+  // Chips (display only; see CHIPS). Bets out at the deal, extras out on a
+  // double/split/insurance, and on settlement losses to the dealer, wins paid
+  // onto the spot, then everything returned back into your tray.
+  if (fx.chips === 'deal') {
+    chipFly($('bjRail'), hSpots[0], r.baseBet, fx.chipAt);
+    animLater(hSpots[0], fx.chipAt + CHIP.fly);
+    Object.keys(r.side || {}).forEach((k, i) =>
+      chipFly($('bjRail'), $('bjSide-' + k), r.side[k].bet, fx.chipAt + (i + 1) * CHIP.gap));
+  } else if (fx.chips && hSpots[fx.chips.hand]) {
+    chipFly($('bjRail'), hSpots[fx.chips.hand], fx.chips.add, fx.chipAt);
+    animLater(hSpots[fx.chips.hand], fx.chipAt + CHIP.fly);
+  }
+  if (fx.settled) {
+    const flows = r.hands.map((h, i) => ({ spot: hSpots[i], bet: h.bet, ret: h.returned, free: h.free }));
+    for (const k of Object.keys(r.side || {})) flows.push({ spot: $('bjSide-' + k), bet: r.side[k].bet, ret: r.side[k].returned });
+    if (r.insurance) flows.push({ spot: hSpots[0], bet: r.insurance, ret: r.insuranceReturned });
+    const paid = chipSettle(flows, $('bjDealerCards'), $('bjRail'), end);
+    r.hands.forEach((h, i) => {
+      if (flows[i].leaveAt == null) return;
+      setVar(hSpots[i], '--gone', flows[i].leaveAt);
+      hSpots[i].classList.add('gone');
+    });
+    animHold(paid);
   }
 
   // Buttons
@@ -2369,6 +2589,8 @@ $('btnPlay').onclick = () => {
   if (phase !== 'decision' || animBusy()) return;
   S.chips -= S.bets.ante;
   renderBank();
+  chipFly($('tcpRail'), $('bet-ante'), S.bets.ante, 0);   // the play bet goes out first
+  animHold(CHIP.fly);
   resolve(true);
 };
 $('btnFold').onclick = () => { if (phase === 'decision' && !animBusy()) resolve(false); };
