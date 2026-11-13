@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Three Card Poker</title>
+<title>Verifiable Casino</title>
 <style>
   :root {
     --felt:        #0f4034;
@@ -21,6 +21,8 @@
     --panel-2:     #1a2327;
     --border:      #2a373c;
     --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --back-a:      #2a4d8f;
+    --back-b:      #1e3a6e;
   }
 
   * { box-sizing: border-box; }
@@ -77,7 +79,7 @@
   .card .r { font-size: 21px; line-height: 1; }
   .card .s { font-size: 24px; line-height: 1; align-self: flex-end; }
   .card.back {
-    background: repeating-linear-gradient(45deg, #2a4d8f 0 6px, #1e3a6e 6px 12px);
+    background: repeating-linear-gradient(45deg, var(--back-a) 0 6px, var(--back-b) 6px 12px);
     border: 2px solid #fdfcf7;
   }
   .card.empty {
@@ -197,11 +199,95 @@
     border: 1px solid var(--border); border-radius: 3px;
   }
 
+  /* ---------- game tabs ---------- */
+  .tabs { display: flex; gap: 6px; }
+  .tabs button {
+    padding: 7px 14px; font-size: 13px; font-weight: 650; letter-spacing: .03em;
+    background: rgba(255,255,255,.06); color: var(--text-dim);
+    border: 1px solid var(--border); border-radius: 7px; cursor: pointer;
+  }
+  .tabs button.on { background: var(--chip); color: #1a1a1a; border-color: var(--chip); }
+  [hidden] { display: none !important; }
+
+  /* ---------- rank / events ---------- */
+  .rank { min-width: 150px; }
+  .rank-line { font-size: 13px; font-weight: 650; white-space: nowrap; }
+  .rank .tier { font-size: 11px; padding: 1px 7px; border-radius: 9px; background: rgba(232,197,71,.15); color: var(--chip); margin-left: 4px; }
+  .rank .ptitle { font-size: 11px; color: var(--text-dim); margin-left: 4px; font-style: italic; }
+  .xpbar { height: 6px; background: rgba(255,255,255,.08); border-radius: 3px; margin: 5px 0 3px; overflow: hidden; }
+  .xpbar div { height: 100%; width: 0; background: var(--chip); transition: width .4s; }
+  .rank-sub { font-size: 11px; color: var(--text-dim); font-family: var(--mono); }
+  .eventbar {
+    margin: -6px 0 14px; padding: 9px 14px; border-radius: 9px; font-size: 13px;
+    background: linear-gradient(90deg, rgba(232,197,71,.22), rgba(232,197,71,.06));
+    border: 1px solid rgba(232,197,71,.45);
+  }
+  .eventbar strong { color: var(--chip); }
+
+  /* ---------- rewards ---------- */
+  .wheelwrap { display: flex; justify-content: center; }
+  .wheelwrap svg { width: 100%; max-width: 280px; height: auto; }
+  .wheelwrap text { font: 650 9px system-ui, sans-serif; fill: #111; }
+  .spinbtn {
+    display: block; width: 100%; margin: 8px 0 4px; padding: 12px; border: none; border-radius: 9px;
+    background: var(--chip); color: #1a1a1a; font-size: 15px; font-weight: 700; cursor: pointer;
+  }
+  .spinbtn:disabled { opacity: .35; cursor: not-allowed; }
+  table.odds { margin-top: 8px; font-size: 12px; }
+  table.odds td { padding: 1px 0; }
+  .quest { padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.06); font-size: 13px; }
+  .quest .qbar { height: 5px; background: rgba(255,255,255,.08); border-radius: 3px; margin: 5px 0 3px; overflow: hidden; }
+  .quest .qbar div { height: 100%; background: var(--win); }
+  .quest .qmeta { font-size: 11px; color: var(--text-dim); display: flex; justify-content: space-between; gap: 8px; }
+  .quest.done { opacity: .6; }
+  .ev { padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.06); font-size: 13px; }
+  .ev .when { font-size: 11px; color: var(--text-dim); }
+  .ev.live { color: var(--chip); }
+  .ev .effect { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .shop { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+  .item { border: 1px solid var(--border); border-radius: 8px; padding: 8px; font-size: 12px; }
+  .item .sw { height: 34px; border-radius: 5px; margin-bottom: 6px; display: flex; align-items: center; justify-content: center; font-weight: 650; }
+  .item button {
+    width: 100%; margin-top: 6px; padding: 5px; font-size: 12px; font-weight: 650; border-radius: 5px; cursor: pointer;
+    background: rgba(255,255,255,.1); color: var(--text); border: 1px solid var(--border);
+  }
+  .item button:disabled { opacity: .35; cursor: not-allowed; }
+  .item.equipped { border-color: var(--chip); }
+  .vaultbal { font: 650 26px/1.1 var(--mono); color: var(--chip); }
+  .vaultbal span { font: 400 12px system-ui, sans-serif; color: var(--text-dim); }
+  .vaultctl { display: flex; gap: 8px; flex-wrap: wrap; }
+  .vaultctl input { flex: 1 1 110px; min-width: 0; padding: 8px; font: 14px var(--mono); background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 6px; }
+  .vaultctl button { flex: 1 1 90px; padding: 8px; font-weight: 650; border-radius: 6px; border: 1px solid var(--border); background: rgba(255,255,255,.1); color: var(--text); cursor: pointer; }
+  a { color: var(--chip); }
+
+  /* ---------- blackjack ---------- */
+  .bj-hands { display: flex; gap: 12px; flex-wrap: wrap; min-height: 140px; }
+  .bj-hand {
+    padding: 8px 10px 6px; border-radius: 9px; border: 1px solid transparent;
+    background: rgba(0,0,0,.15);
+  }
+  .bj-hand.active { border-color: var(--chip); box-shadow: 0 0 0 1px rgba(232,197,71,.3); }
+  .bj-hand .cards { min-height: 0; gap: 0; }
+  .bj-hand .card + .card, #bjDealerCards .card + .card { margin-left: -30px; }
+  .bj-hand .meta { font-size: 12px; color: rgba(255,255,255,.7); margin-top: 6px; }
+  .bj-hand .meta strong { font-family: var(--mono); color: var(--text); }
+  .bj-bet { display: flex; align-items: center; gap: 10px; margin: 16px 0; flex-wrap: wrap; }
+  .bj-bet .betbox { display: flex; align-items: center; gap: 12px; padding: 8px 12px; }
+  .bj-bet .betbox .adj { margin: 0; }
+  .bj-bet .betbox button { padding: 5px 12px; }
+  .shoeinfo { font-size: 12px; color: rgba(255,255,255,.5); }
+  #bjInsure, #bjNoInsure { flex: 1; }
+
   @media (max-width: 620px) {
     .grid2 { grid-template-columns: 1fr; }
     .bets { grid-template-columns: 1fr; }
     .card { width: 62px; height: 88px; }
     .card .r { font-size: 18px; } .card .s { font-size: 20px; }
+    .bj-hand .card + .card, #bjDealerCards .card + .card { margin-left: -34px; }
+    .actions button { flex: 1 1 30%; min-width: 0; padding: 12px 6px; }
+    .tabs { width: 100%; order: 3; }
+    .tabs button { flex: 1 1 0; min-width: 0; padding: 7px 2px; font-size: 12px; }
+    .rank { flex: 1; }
   }
 </style>
 </head>
@@ -209,13 +295,158 @@
 <div class="wrap">
 
   <header>
-    <div class="brand">Three Card Poker<small>verifiable build</small></div>
+    <div class="brand">Play-chip casino<small>verifiable build &middot; no real money</small></div>
+    <nav class="tabs">
+      <button data-game="tcp">Three Card Poker</button>
+      <button data-game="bj">Blackjack</button>
+      <button data-game="fb">Free Bet</button>
+      <button data-game="rewards">Rewards</button>
+    </nav>
+    <div class="rank" id="rankBox">
+      <div class="rank-line"><span id="rankLevel">Lv 1</span> <span class="tier" id="rankTier">Bronze</span> <span class="ptitle" id="rankTitle"></span></div>
+      <div class="xpbar"><div id="xpFill"></div></div>
+      <div class="rank-sub" id="xpText"></div>
+    </div>
     <div class="bank">
       <div class="amt" id="bank">0</div>
       <div class="lbl">chips</div>
     </div>
   </header>
+  <div class="eventbar" id="eventBar" hidden></div>
 
+  <!-- ===================== REWARDS ===================== -->
+  <section id="game-rewards" hidden>
+    <div class="msg" id="rewardsMsg" style="margin:0 0 14px">Spin, quest, rank up. Nothing here changes the odds of any game.</div>
+    <div class="grid2" style="margin-top:0">
+      <div class="panel">
+        <h3>Bonus Wheel</h3>
+        <div class="wheelwrap"><svg id="wheel-bonus" viewBox="-115 -120 230 235" role="img" aria-label="Bonus wheel"></svg></div>
+        <button class="spinbtn" id="spin-bonus">Spin</button>
+        <div class="hint" id="status-bonus"></div>
+        <table id="odds-bonus" class="odds"></table>
+      </div>
+      <div class="panel">
+        <h3>Rescue Wheel</h3>
+        <div class="wheelwrap"><svg id="wheel-rescue" viewBox="-115 -120 230 235" role="img" aria-label="Rescue wheel"></svg></div>
+        <button class="spinbtn" id="spin-rescue">Spin</button>
+        <div class="hint" id="status-rescue"></div>
+        <table id="odds-rescue" class="odds"></table>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="panel">
+        <h3>Today&rsquo;s quests</h3>
+        <div id="questList"></div>
+      </div>
+      <div class="panel">
+        <h3>Events this week</h3>
+        <div id="eventList"></div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      <h3>Vault &mdash; the reward for saving</h3>
+      <div id="vaultBox"></div>
+      <div class="vaultctl">
+        <input type="number" id="vaultAmt" min="1" step="1" placeholder="amount">
+        <button id="vaultIn">Deposit</button>
+        <button id="vaultOut">Withdraw</button>
+        <button id="vaultAllIn">Deposit all</button>
+        <button id="vaultAllOut">Withdraw all</button>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      <h3>Shop &mdash; cosmetics only</h3>
+      <div class="shop" id="shop"></div>
+    </div>
+    <div class="grid2">
+      <div class="panel">
+        <h3>Ranks &amp; table limits</h3>
+        <table id="tierTable"></table>
+      </div>
+      <div class="panel">
+        <h3>Where your chips came from</h3>
+        <table id="ledgerTable"></table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== BLACKJACK ===================== -->
+  <section id="game-bj" hidden>
+    <div class="felt">
+      <div class="seat">
+        <div class="seat-label">Dealer</div>
+        <div class="cards" id="bjDealerCards"></div>
+        <div class="handname" id="bjDealerHand"></div>
+      </div>
+
+      <div class="seat">
+        <div class="seat-label">You</div>
+        <div class="bj-hands" id="bjHands"></div>
+      </div>
+
+      <div class="bj-bet">
+        <div class="betbox active">
+          <div class="name">Bet</div>
+          <div class="val" id="bjBet">0</div>
+          <div class="adj">
+            <button data-bjbet="-1">&minus;</button>
+            <button data-bjbet="1">+</button>
+          </div>
+        </div>
+        <div class="betbox" id="bjBox-perfectPairs">
+          <div class="name">Perfect Pairs</div>
+          <div class="val" id="bjSide-perfectPairs">0</div>
+          <div class="adj">
+            <button data-bjside="perfectPairs" data-d="-1">&minus;</button>
+            <button data-bjside="perfectPairs" data-d="1">+</button>
+          </div>
+        </div>
+        <div class="betbox" id="bjBox-twentyOnePlus3">
+          <div class="name">21+3</div>
+          <div class="val" id="bjSide-twentyOnePlus3">0</div>
+          <div class="adj">
+            <button data-bjside="twentyOnePlus3" data-d="-1">&minus;</button>
+            <button data-bjside="twentyOnePlus3" data-d="1">+</button>
+          </div>
+        </div>
+        <div class="shoeinfo" id="bjShoe"></div>
+      </div>
+
+      <div class="actions" id="bjMainActions">
+        <button id="bjDeal">Deal</button>
+        <button id="bjHit" disabled>Hit</button>
+        <button id="bjStand" disabled>Stand</button>
+        <button id="bjDouble" class="ghost" disabled>Double</button>
+        <button id="bjSplit" class="ghost" disabled>Split</button>
+      </div>
+      <div class="actions" id="bjInsActions" hidden>
+        <button id="bjInsure" class="ghost">Insurance</button>
+        <button id="bjNoInsure">No insurance</button>
+      </div>
+
+      <div class="msg" id="bjMsg">Set your bet and deal.</div>
+      <div class="hint" id="bjHint"></div>
+    </div>
+
+    <div class="grid2">
+      <div class="panel">
+        <h3>Session &mdash; observed vs. exact</h3>
+        <table id="bjStats"></table>
+      </div>
+      <div class="panel">
+        <h3>Round log</h3>
+        <div class="log" id="bjLog"></div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:14px">
+      <h3 id="bjRulesTitle">Rules in force</h3>
+      <table id="bjRules"></table>
+    </div>
+  </section>
+
+  <!-- ===================== THREE CARD POKER ===================== -->
+  <section id="game-tcp">
   <div class="felt">
     <div class="seat">
       <div class="seat-label">Dealer</div>
@@ -287,9 +518,11 @@
       <table id="scbTable"></table>
     </div>
   </div>
+  </section>
 
   <footer>
     Shuffle: Fisher&ndash;Yates over <code>crypto.getRandomValues</code>, rejection-sampled.
+    Blackjack keys: <kbd>H</kbd>it <kbd>S</kbd>tand <kbd>D</kbd>ouble s<kbd>P</kbd>lit <kbd>Enter</kbd> deal.
     Admin console: <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd>
   </footer>
 </div>
@@ -346,6 +579,12 @@
   </div>
 </div>
 
+<!-- Shared blackjack logic: one copy, also loaded by the Node tests.
+     A classic script (not a module), so this still works from file://. -->
+<script src="blackjack-core.js"></script>
+<!-- Economy (ranks, wheels, quests, events, shop). Grants chips only; never
+     touches game odds. Also loaded by the Node tests. -->
+<script src="economy.js"></script>
 <script>
 'use strict';
 
@@ -368,14 +607,51 @@ const RULES = {
     quads: 100, straightFlush: 200, royalFlush: 1000,
   },
 
+  // Blackjack table. Keys are the engine's rule keys (blackjack-core.js,
+  // DEFAULT_RULES). Change any of these and you must re-run
+  //   node enumerate-blackjack.js && node test-blackjack-payouts.js
+  // and update bjHouseEdge below with the new measured figure; the payout
+  // harness fails if the displayed edge disagrees with what it measures.
+  blackjack: {
+    decks: 6, penetration: 0.75, hitSoft17: false, blackjackPays: [3, 2],
+    insurance: true, doubleOn: 'any', doubleAfterSplit: true, maxHands: 4,
+    resplitAces: false, hitSplitAces: false, betUnit: 2,
+    // Side bets (pays N to 1). The exact house edge for these paytables is
+    // enumerated in-page and by enumerate-blackjack.js; see the rules panel.
+    perfectPairs:   { perfect: 25, colored: 12, mixed: 6 },                                   // Wizard Table A
+    twentyOnePlus3: { suitedTrips: 100, straightFlush: 40, trips: 30, straight: 10, flush: 5 }, // Wizard Version 7
+  },
+  bjMinBet: 10,
+  bjBetStep: 10,
+  // Basic-strategy house edge per initial bet. Pooled over 150M simulated
+  // rounds in five runs: ~0.43% (a published simulation gives 0.44%). The
+  // payout harness fails if this drifts more than 4 SE from what it measures.
+  bjHouseEdge: 0.0043,
+
+  // Free Bet Blackjack: Wizard of Odds' standard rules (6 decks, H17, resplit
+  // Aces, free doubles on hard 9-11, free splits except tens, dealer 22
+  // pushes). Same re-measure rule as above.
+  freeBet: {
+    decks: 6, penetration: 0.75, hitSoft17: true, blackjackPays: [3, 2],
+    insurance: true, doubleOn: 'any', doubleAfterSplit: true, maxHands: 4,
+    resplitAces: true, hitSplitAces: false, betUnit: 2,
+    push22: true, freeDoubles: true, freeSplits: true,
+    perfectPairs:   { perfect: 25, colored: 12, mixed: 6 },
+    twentyOnePlus3: { suitedTrips: 100, straightFlush: 40, trips: 30, straight: 10, flush: 5 },
+  },
+  // Pooled over 120M simulated rounds in two runs: ~1.04%. Wizard of Odds: 1.04%.
+  fbHouseEdge: 0.0104,
+
   minBet: 5,
   startingChips: 1000,
-  brokeFloor: 100,      // handed out when you hit zero
-  dailyBonus: 250,
-  dailyCooldownMs: 6 * 60 * 60 * 1000,
+  // Timed bonus, broke floor, quests, events, table limits and the shop are
+  // all in economy.js (ECON). None of it can touch game odds or settlement.
 
   // Admin gate. Change this. It is obfuscation only.
   adminPass: 'felt',
+  // Set false before publishing the site publicly: the console is client-side
+  // and the passphrase is visible in the page source (see HOSTING.md).
+  adminEnabled: true,
 };
 
 /* ===========================================================================
@@ -511,7 +787,6 @@ const SAVE_KEY = 'tcp.save.v1';
 
 const blankState = () => ({
   chips: RULES.startingChips,
-  lastBonus: 0,
   bets: { ante: 10, pp: 5, scb: 5 },
   stats: {
     hands: 0,
@@ -523,14 +798,107 @@ const blankState = () => ({
     catCounts: [0,0,0,0,0,0],   // player 3-card categories
   },
   history: [],                   // capped; full detail for CSV export
+  game: 'tcp',                   // which tab is showing: 'tcp' | 'bj' | 'fb' | 'rewards'
+  tcpRound: null,                // TCP hand awaiting play/fold, persisted so a reload can't eat the stake
+  bj: blankBj(),                 // classic blackjack table
+  fb: blankBj(),                 // Free Bet blackjack table (same shape)
+  econ: blankEcon(),
 });
+
+// Economy state. Every chip that enters or leaves outside a game is recorded
+// in econ.ledger, so the bankroll can always be reconciled exactly:
+//   chips = opening + game nets + sum(ledger) - chips currently in play
+function blankEcon() {
+  return {
+    xp: 0,
+    lastBonusSpin: 0,
+    quests: { day: '', tier: -1, list: [] },
+    owned: ['felt-green', 'back-blue', 'title-none'],
+    equipped: { felt: 'felt-green', back: 'back-blue', title: 'title-none' },
+    ledger: { opening: RULES.startingChips, bonusWheel: 0, rescueWheel: 0, quests: 0, promo: 0, interest: 0, shop: 0, admin: 0 },
+    vault: { balance: 0, day: '', minToday: 0 },   // saved chips: can't be bet, earn capped daily interest
+    spins: [],    // recent wheel results, newest last (capped)
+  };
+}
+
+// Blackjack state. Added alongside the TCP fields (older saves get these
+// defaults on load), so this is not a breaking shape change.
+function blankBj() {
+  return {
+    bet: 10,
+    side: { perfectPairs: 0, twentyOnePlus3: 0 },
+    round: null,   // in-progress round, persisted so a reload can't eat a wager
+    shoe: null,
+    last: null,    // most recent finished round, for display
+    stats: {
+      rounds: 0, hands: 0, wagered: 0, net: 0, initialBets: 0,
+      mainNet: 0,    // net excluding side bets: what "return per initial bet" measures
+      playerNaturals: 0, dealerNaturals: 0,
+      wins: 0, losses: 0, pushes: 0, blackjacks: 0,
+      doubles: 0, splits: 0, insured: 0,
+      freeDoubles: 0, freeSplits: 0, dealer22: 0,
+      // per side bet: { bets, wagered, net, cats: { category: count } }
+      side: {
+        perfectPairs:   { bets: 0, wagered: 0, net: 0, cats: {} },
+        twentyOnePlus3: { bets: 0, wagered: 0, net: 0, cats: {} },
+      },
+    },
+    history: [],
+  };
+}
+
+/** Sum of every game's tracked net result. */
+function gameNets(s) {
+  return s.stats.net + s.bj.stats.net + s.fb.stats.net;
+}
+
+/** Chips already taken from the bankroll for rounds that haven't settled. */
+function chipsInPlay(s) {
+  return (s.tcpRound ? s.tcpRound.stake : 0) +
+         (s.bj.round ? s.bj.round.wagered : 0) +
+         (s.fb.round ? s.fb.round.wagered : 0);
+}
+
+/**
+ * The ledger identity. Holds exactly at every moment, or chips leaked:
+ *   chips + vault = opening + game nets + every ledger entry - chips in play
+ */
+function econReconcile(s) {
+  s = s || S;
+  const L = s.econ.ledger;
+  const expected = L.opening + L.bonusWheel + L.rescueWheel + L.quests + L.promo + L.interest + L.shop + L.admin +
+                   gameNets(s) - chipsInPlay(s);
+  const actual = s.chips + s.econ.vault.balance;
+  return { expected, actual, ok: expected === actual };
+}
 
 let S = load();
 
 function load() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
-    if (raw) return Object.assign(blankState(), JSON.parse(raw));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const s = Object.assign(blankState(), parsed);
+      for (const k of ['bj', 'fb']) {
+        const hadMainNet = !!(s[k] && s[k].stats && 'mainNet' in s[k].stats);
+        s[k] = Object.assign(blankBj(), s[k]);
+        s[k].stats = Object.assign(blankBj().stats, s[k].stats);
+        // Saves from before side bets existed: all of net was main-game net.
+        if (!hadMainNet) s[k].stats.mainNet = s[k].stats.net;
+      }
+      const e = blankEcon();
+      s.econ = Object.assign(e, parsed.econ || {});
+      s.econ.ledger = Object.assign(e.ledger, (parsed.econ || {}).ledger || {});
+      s.econ.equipped = Object.assign(blankEcon().equipped, s.econ.equipped);
+      s.econ.vault = Object.assign(blankEcon().vault, (parsed.econ || {}).vault || {});
+      if (!parsed.econ) {
+        // Save from before the ledger existed: whatever isn't explained by game
+        // results (old timed bonuses, broke floors) becomes the opening balance.
+        s.econ.ledger.opening = s.chips - gameNets(s) + chipsInPlay(s);
+      }
+      return s;
+    }
   } catch (e) { /* storage blocked or corrupt; fall through */ }
   return blankState();
 }
@@ -615,8 +983,12 @@ function totalStake() {
 
 function deal() {
   const stake = totalStake();
+  const limit = econMaxBet();
   if (stake === 0) { $('msg').textContent = 'Place at least one bet.'; return; }
-  if (S.chips < stake) { $('msg').textContent = 'Not enough chips.'; return; }
+  if (Math.max(S.bets.ante, S.bets.pp, S.bets.scb) > limit) {
+    $('msg').textContent = `Your table limit is ${limit.toLocaleString()} per bet. Rank up to raise it.`; return;
+  }
+  if (S.chips < stake) { $('msg').textContent = 'Not enough chips.' + econRescueHint(); return; }
 
   deck = freshShuffledDeck();
   player = [deck.pop(), deck.pop(), deck.pop()];
@@ -625,6 +997,7 @@ function deal() {
   dEval = eval3(...dealer);
 
   S.chips -= stake;
+  S.tcpRound = { player, dealer, stake };   // a reload resumes this hand instead of losing the stake
   clearResults();
   renderBank();
   renderCards($('playerCards'), player, false);
@@ -762,13 +1135,18 @@ function resolve(raised) {
     `<br><strong class="${net > 0 ? 'win' : net < 0 ? 'lost' : 'pushc'}">` +
     `Net ${net >= 0 ? '+' : ''}${net}</strong>`;
   $('hint').textContent = '';
+  S.tcpRound = null;
 
-  /* ---- broke floor ---- */
-  if (S.chips < RULES.minBet) {
-    S.chips += RULES.brokeFloor;
-    $('msg').innerHTML += `<br><span class="pushc">Busted. Staked you ${RULES.brokeFloor} ` +
-      `to keep going — lowest table only.</span>`;
-  }
+  /* ---- economy: XP, quests, event promos. Reads the result; can't change it. ---- */
+  const ppPay = S.bets.pp > 0 ? (RULES.pairPlus[CAT_KEY[pEval.cat]] || 0) : 0;
+  const econLines = econAfterRound({
+    game: 'tcp', wagered: stake, minBet: RULES.minBet,
+    pairPlusBet: S.bets.pp, pairPlusWin: ppPay > 0,
+    pairPlusBig: S.bets.pp > 0 && (pEval.cat === CAT.TRIPS || pEval.cat === CAT.SF),
+    tcpStraightPlus: pEval.cat >= CAT.STRAIGHT,
+  });
+  if (econLines.length) $('msg').innerHTML += '<br>' + econLines.join('<br>');
+  $('msg').innerHTML += econRescueHint();
 
   renderBank();
   renderStats();
@@ -850,6 +1228,740 @@ function renderPaytables() {
 }
 
 /* ===========================================================================
+   BLACKJACK
+   All game logic is in blackjack-core.js (BJ). This section only moves chips
+   and draws the table. Chip rule: every increase in round.wagered comes out
+   of S.chips the moment it happens; round.returned goes back in once, at
+   settlement. Nothing else touches S.chips during a round.
+   =========================================================================== */
+
+// Two blackjack tables share this controller and the same DOM. Each has its
+// own rules, shoe, in-progress round and stats (S.bj / S.fb).
+const BJ_TABLES = {
+  bj: { name: 'Blackjack',          rules: BJ.makeRules(RULES.blackjack), get edge() { return RULES.bjHouseEdge; } },
+  fb: { name: 'Free Bet Blackjack', rules: BJ.makeRules(RULES.freeBet),   get edge() { return RULES.fbHouseEdge; } },
+};
+let bjTable = 'bj';
+const T = () => BJ_TABLES[bjTable];   // current table definition
+const TS = () => S[bjTable];          // current table state
+const BJ_OUTCOME = { blackjack: 'Blackjack', win: 'Win', push: 'Push', lose: 'Lose', bust: 'Bust' };
+const BJ_SIDE_KEYS = Object.keys(BJ.SIDE_BETS);
+const BJ_SIDE_NAME = { perfectPairs: 'Perfect Pairs', twentyOnePlus3: '21+3' };
+const BJ_CAT_NAME = {
+  perfect: 'Perfect pair', colored: 'Colored pair', mixed: 'Mixed pair',
+  suitedTrips: 'Suited trips', straightFlush: 'Straight flush', trips: 'Three of a kind',
+  straight: 'Straight', flush: 'Flush', lose: 'No win',
+};
+
+/** Exact side-bet distribution for a table, enumerated in-page (not hardcoded). Cached. */
+const BJ_SIDE_EXACT = {};
+function bjSideExact(kind) {
+  const key = bjTable + ':' + kind;
+  if (!BJ_SIDE_EXACT[key]) {
+    const counts = BJ.sideBetCounts(kind, T().rules.decks);
+    BJ_SIDE_EXACT[key] = { counts, ret: BJ.sideBetReturn(T().rules[kind], counts) };
+  }
+  return BJ_SIDE_EXACT[key];
+}
+const BJ_ACTIONS = ['hit', 'stand', 'double', 'split'];
+const bjBtn = a => $('bj' + a[0].toUpperCase() + a.slice(1));
+
+/** Exact P(natural) for a fresh shoe: Ace then ten or ten then Ace. */
+function bjNaturalP(decks) {
+  const n = 52 * decks;
+  return 2 * (4 * decks / n) * (16 * decks / (n - 1));
+}
+
+function bjOutcomeLabel(r, h) {
+  return h.outcome === 'push' && r.dealer22Push ? 'Push (dealer 22)' : BJ_OUTCOME[h.outcome];
+}
+
+function bjTotalLabel(cards) {
+  const v = BJ.handValue(cards);
+  if (v.bust) return `${v.total} bust`;
+  return (v.soft && v.total < 21 ? 'soft ' : '') + v.total;
+}
+
+function bjEnsureShoe() {
+  const sh = TS().shoe;
+  if (!sh || sh.decks !== T().rules.decks || BJ.needsShuffle(sh)) {
+    TS().shoe = BJ.newShoe(T().rules, randInt);
+    return true;
+  }
+  return false;
+}
+
+function bjDeal() {
+  if (TS().round) return;
+  const bet = TS().bet;
+  const side = {};
+  for (const k of BJ_SIDE_KEYS) if (T().rules[k] && TS().side[k] > 0) side[k] = TS().side[k];
+  const total = bet + Object.values(side).reduce((a, b) => a + b, 0);
+  const limit = econMaxBet();
+  if (bet < RULES.bjMinBet) { $('bjMsg').textContent = `Minimum bet is ${RULES.bjMinBet}.`; return; }
+  if (Math.max(bet, ...Object.values(side)) > limit) {
+    $('bjMsg').textContent = `Your table limit is ${limit.toLocaleString()} per bet. Rank up to raise it.`; return;
+  }
+  if (S.chips < total) {
+    $('bjMsg').innerHTML = 'Not enough chips for the main bet plus side bets.' + econRescueHint(); return;
+  }
+  const shuffled = bjEnsureShoe();
+  S.chips -= total;
+  TS().round = BJ.startRound(TS().shoe, bet, T().rules, { randInt, side });
+  TS().last = null;
+  bjAfter(shuffled ? 'New shoe shuffled. ' : '');
+}
+
+function bjAct(action) {
+  const r = TS().round;
+  if (!r) return;
+  if (!BJ.legalActions(r, S.chips)[action]) return;
+  const before = r.wagered;
+  const free = BJ.freeOffers(r);
+  if (action === 'double') TS().stats[free.double ? 'freeDoubles' : 'doubles']++;
+  if (action === 'split') TS().stats[free.split ? 'freeSplits' : 'splits']++;
+  if (action === 'insure') TS().stats.insured++;
+  BJ.act(r, TS().shoe, action, S.chips, { randInt });
+  S.chips -= r.wagered - before;
+  bjAfter('');
+}
+
+function bjAfter(prefix) {
+  const r = TS().round;
+  if (r.phase === 'done') { bjSettle(r, prefix); return; }
+  $('bjMsg').textContent = prefix + (r.phase === 'insurance'
+    ? 'Dealer shows an Ace. Insurance?'
+    : r.hands.length > 1 ? `Hand ${r.active + 1} of ${r.hands.length}.` : 'Your move.');
+  save();
+  bjRender();
+}
+
+function bjSettle(r, prefix) {
+  S.chips += r.returned;
+
+  const st = TS().stats;
+  const playerNatural = r.hands.length === 1 && BJ.isNatural(r.hands[0].cards, false);
+  st.rounds++;
+  st.hands += r.hands.length;
+  st.wagered += r.wagered;
+  st.net += r.net;
+  st.mainNet += r.net;   // side-bet results are subtracted again below
+  st.initialBets += r.baseBet;
+  if (playerNatural) st.playerNaturals++;
+  if (r.dealerBlackjack) st.dealerNaturals++;
+  if (r.dealer22Push) st.dealer22++;
+  for (const h of r.hands) {
+    if (h.outcome === 'blackjack') st.blackjacks++;
+    else if (h.outcome === 'win') st.wins++;
+    else if (h.outcome === 'push') st.pushes++;
+    else st.losses++;
+  }
+
+  TS().history.push({
+    n: st.rounds, t: Date.now(),
+    dealer: r.dealer.join(','),
+    hands: r.hands.map(h => ({ cards: h.cards.join(','), bet: h.bet, free: h.free, outcome: h.outcome, returned: h.returned })),
+    insurance: r.insurance, wagered: r.wagered, returned: r.returned, net: r.net,
+  });
+  if (TS().history.length > 5000) TS().history.splice(0, TS().history.length - 5000);
+
+  const lines = r.hands.map((h, i) => {
+    const d = h.returned - h.bet;
+    return (r.hands.length > 1 ? `Hand ${i + 1}: ` : '') + `${bjOutcomeLabel(r, h)} ${d >= 0 ? '+' : ''}${d}`;
+  });
+  if (r.insurance) {
+    const d = r.insuranceReturned - r.insurance;
+    lines.push(`Insurance ${d >= 0 ? '+' : ''}${d}`);
+  }
+  for (const k of BJ_SIDE_KEYS) {
+    const sb = r.side && r.side[k];
+    if (!sb) continue;
+    const d = sb.returned - sb.bet;
+    lines.push(`${BJ_SIDE_NAME[k]}: ${sb.outcome ? `${BJ_CAT_NAME[sb.outcome]} ${sb.pays}:1` : 'no win'} ${d >= 0 ? '+' : ''}${d}`);
+    const ss = st.side[k];
+    ss.bets++; ss.wagered += sb.bet; ss.net += d;
+    st.mainNet -= d;     // mainNet got all of r.net above; take the side bet back out
+    const c = sb.outcome || 'lose';
+    ss.cats[c] = (ss.cats[c] || 0) + 1;
+  }
+  if (r.midRoundReshuffle) lines.push('Shoe ran out mid-round; discards reshuffled');
+  const net = r.net;
+  $('bjMsg').innerHTML = prefix + lines.join(' &nbsp;|&nbsp; ') +
+    `<br><strong class="${net > 0 ? 'win' : net < 0 ? 'lost' : 'pushc'}">Net ${net >= 0 ? '+' : ''}${net}</strong>`;
+
+  TS().last = r;
+  TS().round = null;
+
+  /* ---- economy: XP, quests, event promos. Reads the result; can't change it. ---- */
+  const sideNet = Object.values(r.side || {}).reduce((a, sb) => a + sb.returned - sb.bet, 0);
+  const econLines = econAfterRound({
+    game: bjTable, wagered: r.wagered, minBet: RULES.bjMinBet,
+    mainBet: r.baseBet, mainNet: r.net - sideNet,
+    natural: r.hands.length === 1 && r.hands[0].outcome === 'blackjack',
+    handsWon: r.hands.filter(h => h.outcome === 'win' || h.outcome === 'blackjack').length,
+    doublesWon: r.hands.filter(h => h.doubled && h.outcome === 'win').length,
+    splits: r.hands.length - 1,
+    freeWins: r.hands.filter(h => h.free > 0 && h.outcome === 'win').length,
+    dealer22: !!r.dealer22Push,
+    sideWins: Object.values(r.side || {}).filter(sb => sb.returned > 0).length,
+  });
+  if (econLines.length) $('bjMsg').innerHTML += '<br>' + econLines.join('<br>');
+  $('bjMsg').innerHTML += econRescueHint();
+  if (TS().bet > S.chips) TS().bet = RULES.bjMinBet;
+
+  save();
+  renderBank();
+  bjRender();
+  bjRenderStats();
+  bjRenderLog();
+}
+
+function bjRender() {
+  renderBank();
+  $('bjBet').textContent = TS().bet;
+  for (const k of BJ_SIDE_KEYS) {
+    $('bjBox-' + k).hidden = !T().rules[k];
+    $('bjSide-' + k).textContent = TS().side[k];
+    $('bjBox-' + k).classList.toggle('active', TS().side[k] > 0);
+  }
+  const sh = TS().shoe;
+  $('bjShoe').textContent = sh
+    ? `Shoe: ${sh.cards.length - sh.pos} of ${sh.cards.length} cards left` +
+      (BJ.needsShuffle(sh) ? ' (cut card out; shuffles next deal)' : '')
+    : `${T().rules.decks}-deck shoe, shuffled on first deal`;
+
+  const r = TS().round || TS().last;
+  const live = !!TS().round;
+  const holeHidden = live && (r.phase === 'insurance' || r.phase === 'player');
+
+  // Dealer
+  const dEl = $('bjDealerCards');
+  if (!r) renderCards(dEl, [], false);
+  else {
+    dEl.innerHTML = '';
+    r.dealer.forEach((c, i) => dEl.appendChild(cardEl(c, i === 1 && holeHidden && !$('peek').checked)));
+  }
+  $('bjDealerHand').textContent = !r ? '' : holeHidden
+    ? `Showing ${bjTotalLabel([r.dealer[0]])}`
+    : (r.dealerBlackjack ? 'Blackjack' : r.dealer22Push ? '22: pushes every live hand' : bjTotalLabel(r.dealer));
+
+  // Player hands
+  const hEl = $('bjHands');
+  hEl.innerHTML = '';
+  if (r) {
+    r.hands.forEach((h, i) => {
+      const box = document.createElement('div');
+      box.className = 'bj-hand' + (live && r.phase === 'player' && i === r.active ? ' active' : '');
+      const cards = document.createElement('div');
+      cards.className = 'cards';
+      h.cards.forEach(c => cards.appendChild(cardEl(c, false)));
+      box.appendChild(cards);
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      const isNat = r.hands.length === 1 && BJ.isNatural(h.cards, false);
+      let res = '';
+      if (h.outcome) {
+        const d = h.returned - h.bet;
+        const cls = d > 0 ? 'win' : d < 0 ? 'lost' : 'pushc';
+        res = ` &middot; <span class="${cls}">${bjOutcomeLabel(r, h)} ${d >= 0 ? '+' : ''}${d}</span>`;
+      }
+      meta.innerHTML = `<strong>${isNat ? 'Blackjack' : bjTotalLabel(h.cards)}</strong>` +
+        ` &middot; bet ${h.bet}${h.free ? ` + <span class="pushc">${h.free} free</span>` : ''}` +
+        `${h.doubled ? (h.freeDoubled ? ' (free double)' : ' (doubled)') : ''}${res}`;
+      box.appendChild(meta);
+      hEl.appendChild(box);
+    });
+  }
+
+  // Buttons
+  const legal = live ? BJ.legalActions(r, S.chips) : {};
+  const insurance = live && r.phase === 'insurance';
+  $('bjMainActions').hidden = insurance;
+  $('bjInsActions').hidden = !insurance;
+  $('bjInsure').disabled = !legal.insure;
+  $('bjDeal').disabled = live;
+  for (const a of BJ_ACTIONS) bjBtn(a).disabled = !legal[a];
+  const free = live ? BJ.freeOffers(r) : {};
+  $('bjDouble').textContent = free.double ? 'Free double' : 'Double';
+  $('bjSplit').textContent = free.split ? 'Free split' : 'Split';
+  document.querySelectorAll('[data-bjbet],[data-bjside]').forEach(b => { b.disabled = live; });
+
+  // Strategy hint: what basic strategy says right now
+  if (live) {
+    const best = BJ.basicStrategy(r, S.chips);
+    const fo = BJ.freeOffers(r);
+    const label = { hit: 'hit', stand: 'stand', double: fo.double ? 'free double' : 'double',
+                    split: fo.split ? 'free split' : 'split', decline: 'decline insurance' }[best];
+    $('bjHint').textContent = `Basic strategy: ${label}` +
+      (best === 'decline' ? ' (it’s a losing side bet without card counting)' : '');
+  } else {
+    $('bjHint').textContent = '';
+  }
+}
+
+function bjRenderStats() {
+  const st = TS().stats;
+  const pct = x => (x * 100).toFixed(2) + '%';
+  const rows = [];
+  const row = (k, v) => rows.push(`<tr class="stat-row"><td>${k}</td><td>${v}</td></tr>`);
+  const vs = (x, exact) => `${pct(x)} <span style="color:#667">vs ${pct(exact)}</span>`;
+  row('Rounds played', st.rounds);
+  row('Total wagered', st.wagered.toLocaleString());
+  row('Net', `<span class="${st.net > 0 ? 'win' : st.net < 0 ? 'lost' : ''}">${st.net >= 0 ? '+' : ''}${st.net.toLocaleString()}</span>`);
+  if (st.initialBets > 0) {
+    const ret = 1 + st.mainNet / st.initialBets;   // main game only; side bets have their own rows
+    row('Return per initial bet', T().edge === null ? pct(ret)
+      : vs(ret, 1 - T().edge));
+  }
+  if (st.rounds > 0) {
+    const pN = bjNaturalP(T().rules.decks);
+    row('Your blackjacks', vs(st.playerNaturals / st.rounds, pN));
+    row('Dealer blackjacks', vs(st.dealerNaturals / st.rounds, pN));
+    rows.push('<tr><td colspan="2" style="padding-top:8px;color:#667;font-size:11px;text-transform:uppercase;letter-spacing:.08em">Hand results</td></tr>');
+    row('Blackjack / win / push / lose', `${st.blackjacks} / ${st.wins} / ${st.pushes} / ${st.losses}`);
+    row('Doubles / splits / insurance', `${st.doubles} / ${st.splits} / ${st.insured}`);
+    for (const k of BJ_SIDE_KEYS) {
+      const ss = st.side[k];
+      if (!T().rules[k] || !ss.bets) continue;
+      const ex = bjSideExact(k);
+      rows.push(`<tr><td colspan="2" style="padding-top:8px;color:#667;font-size:11px;text-transform:uppercase;letter-spacing:.08em">${BJ_SIDE_NAME[k]} (${ss.bets} bets)</td></tr>`);
+      row('Return', vs(1 + ss.net / ss.wagered, 1 + ex.ret));
+      for (const c of BJ.SIDE_BETS[k]) {
+        row(BJ_CAT_NAME[c], vs((ss.cats[c] || 0) / ss.bets, ex.counts[c] / ex.counts.total));
+      }
+    }
+    if (T().rules.push22) {
+      row('Free doubles / free splits', `${st.freeDoubles} / ${st.freeSplits}`);
+      row('Dealer 22 pushes', st.dealer22);
+    }
+  }
+  $('bjStats').innerHTML = rows.join('');
+}
+
+function bjRenderLog() {
+  const recent = TS().history.slice(-40).reverse();
+  const name = cs => cs.split(',').map(c => RANKS[rankOf(+c)]).join(' ');
+  $('bjLog').innerHTML = recent.map(h =>
+    `<div>#${h.n} ${h.hands.map(x => name(x.cards)).join(' | ')} vs ${name(h.dealer)} ` +
+    `<span class="${h.net > 0 ? 'win' : h.net < 0 ? 'lost' : 'pushc'}">${h.net >= 0 ? '+' : ''}${h.net}</span></div>`
+  ).join('') || '<div style="color:#556">No rounds yet.</div>';
+}
+
+function bjRenderRules() {
+  const r = T().rules;
+  const rows = [
+    ['Decks', `${r.decks}, reshuffled at ${Math.round(r.penetration * 100)}% penetration`],
+    ['Dealer soft 17', r.hitSoft17 ? 'hits (H17)' : 'stands (S17)'],
+    ['Blackjack pays', `${r.blackjackPays[0]}:${r.blackjackPays[1]}`],
+    ['Dealer peeks', 'yes, with Ace or ten up; dealer blackjack takes only the original bet'],
+    ['Insurance', r.insurance ? 'offered on Ace, pays 2:1' : 'not offered'],
+    ['Double', (r.doubleOn === 'any' ? 'any first two cards' : `first two cards totalling ${r.doubleOn}`) +
+               (r.doubleAfterSplit ? ', also after split' : ', not after split')],
+    ['Split', `up to ${r.maxHands} hands; any two ten-value cards may split`],
+    ['Split Aces', `${r.hitSplitAces ? 'may be hit' : 'one card each'}, ${r.resplitAces ? 'may resplit' : 'no resplit'}; 21 after split pays 1:1`],
+    ...(r.freeDoubles ? [['Free doubles', 'on any two-card hard 9, 10 or 11, including after a split']] : []),
+    ...(r.freeSplits ? [['Free splits', 'on every pair except ten-value cards, including resplits']] : []),
+    ...(r.push22 ? [['Dealer 22', 'pushes every hand that hasn’t busted (your blackjack still pays 3:2)']] : []),
+    ...(r.freeDoubles || r.freeSplits ? [['Free bets', 'a win pays as if the chip were yours; a push or loss just returns the free chip']] : []),
+    ['Surrender', 'not offered'],
+    ['Bets', `${RULES.bjMinBet} minimum; your table limit is ${econMaxBet().toLocaleString()} per bet (set by rank); side bets optional`],
+    ...BJ_SIDE_KEYS.filter(k => r[k]).map(k => {
+      const ex = bjSideExact(k);
+      const pays = BJ.SIDE_BETS[k].filter(c => r[k][c]).map(c => `${BJ_CAT_NAME[c]} ${r[k][c]}:1`).join(', ');
+      return [BJ_SIDE_NAME[k], `${pays}. Exact house edge ${(-100 * ex.ret).toFixed(4)}% ` +
+        `(all ${ex.counts.total.toLocaleString()} card combinations enumerated in this page)`];
+    }),
+    ['House edge, basic strategy', T().edge === null ? 'not yet measured'
+      : `${(T().edge * 100).toFixed(2)}% of initial bet (measured by test-blackjack-payouts.js)`],
+  ];
+  $('bjRules').innerHTML = rows.map(([k, v]) => `<tr class="stat-row"><td>${k}</td><td>${v}</td></tr>`).join('');
+}
+
+/* ---------- table switching ---------- */
+
+function showGame(g) {
+  S.game = BJ_TABLES[g] || g === 'rewards' ? g : 'tcp';
+  const isBj = !!BJ_TABLES[S.game];
+  $('game-bj').hidden = !isBj;
+  $('game-tcp').hidden = S.game !== 'tcp';
+  $('game-rewards').hidden = S.game !== 'rewards';
+  if (S.game === 'rewards') econRenderRewards();
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.game === S.game));
+  if (isBj) {
+    bjTable = S.game;
+    $('bjRulesTitle').textContent = `${T().name}: rules in force`;
+    if (!TS().round && !TS().last) $('bjMsg').textContent = 'Set your bet and deal.';
+    else if (TS().round) bjAfter('');
+    bjRender(); bjRenderStats(); bjRenderLog(); bjRenderRules();
+  }
+  save();
+}
+
+/* ===========================================================================
+   ECONOMY: rank, wheels, quests, events, shop (rules in economy.js)
+   Grants and spends go through econGrant() and nowhere else. Nothing in this
+   section can see or change how a game deals or settles: it reads finished
+   results only.
+   =========================================================================== */
+
+const now = () => new Date(Date.now());   // one clock, so tests can move time
+
+const econLevel = () => ECON.levelFromXp(S.econ.xp);
+const econTier = () => ECON.tierIndex(econLevel().level);
+const econMaxBet = () => ECON.TIERS[econTier()].maxBet;
+
+/** The ONLY way chips enter or leave outside a game. Recorded in the ledger. */
+function econGrant(kind, amount) {
+  if (!Number.isInteger(amount)) throw new Error('Ledger amounts must be whole chips: ' + amount);
+  if (kind === 'opening' || !(kind in S.econ.ledger)) throw new Error('Unknown ledger entry: ' + kind);
+  S.chips += amount;
+  S.econ.ledger[kind] += amount;
+}
+
+/** Add XP (doubled during Double XP). Returns the new level if it went up, else 0. */
+function econAddXp(base) {
+  const before = econLevel().level;
+  S.econ.xp += base * (ECON.isActive(now(), 'doubleXp') ? 2 : 1);
+  const after = econLevel().level;
+  return after > before ? after : 0;
+}
+
+/** Today's quests. Ranking up mid-day keeps today's set; new tier applies tomorrow. */
+function econEnsureQuests() {
+  const day = ECON.dayKey(now());
+  if (S.econ.quests.day !== day) {
+    const tier = econTier();
+    S.econ.quests = { day, tier, list: ECON.dailyQuests(day, tier) };
+  }
+}
+
+/**
+ * Called once after every finished round of any game, with facts about the
+ * result. Awards XP, quest progress and event promos. Returns message lines.
+ */
+function econAfterRound(facts) {
+  econEnsureQuests();
+  econAccrueVault();
+  const t = now();
+  const lines = [];
+  const tierBefore = econTier();
+
+  for (const p of ECON.promoFor(facts, t).lines) {
+    econGrant('promo', p.amount);
+    lines.push(`<span class="win">${p.event.name} promo: +${p.amount.toLocaleString()}</span>`);
+  }
+
+  let leveled = econAddXp(ECON.xpForRound(facts.wagered, facts.minBet));
+  const qTier = S.econ.quests.tier;
+  for (const q of S.econ.quests.list) {
+    if (ECON.advanceQuest(q, facts)) {
+      const rw = ECON.questReward(qTier, t);
+      econGrant('quests', rw.chips);
+      leveled = econAddXp(rw.xp) || leveled;
+      lines.push(`<span class="win">Quest complete: ${ECON.questText(q)}. +${rw.chips.toLocaleString()} chips, +${rw.xp} XP</span>`);
+    }
+  }
+  if (leveled) {
+    const tierAfter = econTier();
+    lines.push(`<span class="win">Level up: you're level ${leveled}` +
+      (tierAfter > tierBefore ? `, now ${ECON.TIERS[tierAfter].name}! Table limit ${ECON.TIERS[tierAfter].maxBet.toLocaleString()}, ` +
+        `bigger wheel prizes and quests.` : '.') + '</span>');
+  }
+  econRenderHeader();
+  if (S.game === 'rewards') econRenderRewards();
+  return lines;
+}
+
+/* ---------- wheels ---------- */
+
+// Broke means broke: chips in the vault count, so stashing them doesn't unlock a rescue.
+const econRescueReady = () => S.chips + S.econ.vault.balance < ECON.WHEELS.rescue.availableBelow && chipsInPlay(S) === 0;
+const econBonusNow = () => ECON.bonusWheelNow(now(), econTier());
+const econBonusReadyAt = () => S.econ.lastBonusSpin + econBonusNow().cooldownMs;
+
+function econRescueHint() {
+  return econRescueReady()
+    ? '<br><span class="pushc">Out of chips? The <a href="#" onclick="showGame(\'rewards\');return false">Rescue Wheel</a> is ready, free, any time you\'re under ' +
+      `${ECON.WHEELS.rescue.availableBelow} chips.</span>`
+    : '';
+}
+
+/**
+ * Spin a wheel. The outcome is drawn with the same crypto RNG as the cards,
+ * granted through the ledger, and saved BEFORE any animation plays.
+ */
+function econSpin(which) {
+  const t = now();
+  let mult = 1;
+  if (which === 'rescue') {
+    if (!econRescueReady()) return null;
+  } else if (which === 'bonus') {
+    if (t.getTime() < econBonusReadyAt()) return null;
+    mult = econBonusNow().mult;
+    S.econ.lastBonusSpin = t.getTime();
+  } else return null;
+  const wheel = ECON.WHEELS[which];
+  const idx = ECON.spinWheel(wheel, randInt);
+  const chips = ECON.slicePrize(wheel.slices[idx], mult);
+  econGrant(which === 'rescue' ? 'rescueWheel' : 'bonusWheel', chips);
+  S.econ.spins.push({ t: t.getTime(), wheel: which, slice: idx, mult, chips });
+  if (S.econ.spins.length > 200) S.econ.spins.splice(0, S.econ.spins.length - 200);
+  save();
+  return { idx, chips, mult };
+}
+
+const WHEEL_COLORS = ['#e8c547', '#5fd68a', '#e07a5c', '#6fa8dc', '#c38fe0', '#f2a65a', '#4fc1b5', '#f07fa6'];
+const wheelAngle = { bonus: 0, rescue: 0 };
+const wheelDrawnMult = { bonus: null, rescue: null };
+let wheelSpinning = false;
+
+/** Draw a wheel with every slice's angle proportional to its probability. */
+function econDrawWheel(which, mult) {
+  const w = ECON.WHEELS[which], total = ECON.wheelTotal(w);
+  const pt = (deg, r) => [r * Math.sin(deg * Math.PI / 180), -r * Math.cos(deg * Math.PI / 180)].map(v => v.toFixed(2)).join(' ');
+  let a0 = 0;
+  const parts = w.slices.map((s, i) => {
+    const sweep = s.weight / total * 360, a1 = a0 + sweep, mid = a0 + sweep / 2;
+    const path = `<path d="M0 0 L${pt(a0, 100)} A100 100 0 ${sweep > 180 ? 1 : 0} 1 ${pt(a1, 100)} Z" ` +
+      `fill="${WHEEL_COLORS[i % WHEEL_COLORS.length]}" stroke="#12191c" stroke-width="1"/>`;
+    const label = sweep >= 9
+      ? `<text transform="rotate(${mid.toFixed(2)}) translate(0 -70)${mid > 90 && mid < 270 ? ' rotate(180)' : ''}" ` +
+        `text-anchor="middle" dominant-baseline="middle">${ECON.slicePrize(s, mult).toLocaleString()}</text>`
+      : '';
+    a0 = a1;
+    return path + label;
+  });
+  $('wheel-' + which).innerHTML =
+    `<g id="rot-${which}" style="transform: rotate(${wheelAngle[which]}deg); transition: transform 4s cubic-bezier(.15,.7,.12,1)">${parts.join('')}</g>` +
+    `<circle r="11" fill="#12191c" stroke="#e8c547" stroke-width="2"/>` +
+    `<polygon points="-9,-117 9,-117 0,-95" fill="#fdfcf7" stroke="#12191c" stroke-width="1.5"/>`;
+  wheelDrawnMult[which] = mult;
+}
+
+function econAnimateTo(which, idx, done) {
+  const w = ECON.WHEELS[which], total = ECON.wheelTotal(w);
+  let start = 0;
+  for (let i = 0; i < idx; i++) start += w.slices[i].weight / total * 360;
+  const sweep = w.slices[idx].weight / total * 360;
+  const target = start + sweep * (0.15 + 0.7 * randInt(1000) / 1000);   // where in the slice: cosmetic only
+  const cur = wheelAngle[which];
+  const rest = ((360 - target - cur) % 360 + 360) % 360;
+  wheelAngle[which] = cur + 5 * 360 + rest;
+  const g = $('rot-' + which);
+  if (g && g.style) g.style.transform = `rotate(${wheelAngle[which]}deg)`;
+  wheelSpinning = true;
+  setTimeout(() => { wheelSpinning = false; done(); }, 4100);
+}
+
+function econSpinClick(which) {
+  if (wheelSpinning) return;
+  const res = econSpin(which);
+  if (!res) { econRenderRewards(); return; }
+  $('rewardsMsg').textContent = 'Spinning…';
+  econAnimateTo(which, res.idx, () => {
+    $('rewardsMsg').innerHTML = `<span class="win">${ECON.WHEELS[which].name}: +${res.chips.toLocaleString()} chips!</span>`;
+    renderBank(); econRenderRewards();
+  });
+  econRenderRewards();
+}
+
+/* ---------- vault ---------- */
+
+/** Pay any interest owed for finished days. Call before any vault move. */
+function econAccrueVault() {
+  const paid = ECON.vaultAccrue(S.econ.vault, ECON.dayKey(now()), econTier());
+  if (paid) S.econ.ledger.interest += paid;   // credited into the vault, not to chips
+  return paid;
+}
+
+/** Deposit (+) or withdraw (-). A transfer, not a grant: chips + vault is unchanged. */
+function econVault(amount) {
+  econAccrueVault();
+  if (!Number.isInteger(amount) || amount === 0) return false;
+  if (amount > 0 && amount > S.chips) return false;
+  if (amount < 0 && -amount > S.econ.vault.balance) return false;
+  ECON.vaultMove(S.econ.vault, amount);
+  S.chips -= amount;
+  save();
+  renderBank(); econRenderRewards();
+  return true;
+}
+
+/* ---------- shop ---------- */
+
+function econBuy(id) {
+  const it = ECON.SHOP_BY_ID[id];
+  if (!it || S.econ.owned.includes(id) || S.chips < it.price) return false;
+  econGrant('shop', -it.price);
+  S.econ.owned.push(id);
+  econEquip(id);
+  return true;
+}
+
+function econEquip(id) {
+  const it = ECON.SHOP_BY_ID[id];
+  if (!it || !S.econ.owned.includes(id)) return false;
+  S.econ.equipped[it.kind] = id;
+  applyCosmetics();
+  save();
+  renderBank(); econRenderHeader(); econRenderRewards();
+  return true;
+}
+
+function applyCosmetics() {
+  const root = document.documentElement;
+  if (!root || !root.style || !root.style.setProperty) return;
+  const felt = ECON.SHOP_BY_ID[S.econ.equipped.felt], back = ECON.SHOP_BY_ID[S.econ.equipped.back];
+  if (felt) { root.style.setProperty('--felt', felt.colors[0]); root.style.setProperty('--felt-dark', felt.colors[1]); }
+  if (back) { root.style.setProperty('--back-a', back.colors[0]); root.style.setProperty('--back-b', back.colors[1]); }
+}
+
+/* ---------- rendering ---------- */
+
+function econRenderHeader() {
+  const lv = econLevel(), tier = ECON.TIERS[econTier()];
+  $('rankLevel').textContent = `Lv ${lv.level}`;
+  $('rankTier').textContent = tier.name;
+  $('rankTitle').textContent = ECON.SHOP_BY_ID[S.econ.equipped.title].text;
+  $('xpFill').style.width = (100 * lv.into / lv.need).toFixed(1) + '%';
+  $('xpText').textContent = `${lv.into} / ${lv.need} XP`;
+  const live = ECON.activeEvents(now());
+  $('eventBar').hidden = !live.length;
+  $('eventBar').innerHTML = live.map(e => `<strong>${e.name}</strong> is on: ${e.desc}`).join('<br>');
+}
+
+function fmtWait(ms) {
+  const m = Math.ceil(ms / 60000);
+  return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
+}
+
+/** Exact effect of each promo event on the affected bet, computed from this page's own odds. */
+function econEventEffect(e) {
+  if (e.id === 'bonanza') {
+    const add = bjNaturalP(BJ_TABLES.bj.rules.decks) * e.promo.rate;
+    return `Adds ${(100 * add).toFixed(2)}% of the main bet on average (before the cap): ` +
+      `Blackjack goes from ${(-100 * RULES.bjHouseEdge).toFixed(2)}% to ${(100 * (add - RULES.bjHouseEdge)).toFixed(2)}%, ` +
+      `Free Bet from ${(-100 * RULES.fbHouseEdge).toFixed(2)}% to ${(100 * (add - RULES.fbHouseEdge)).toFixed(2)}%.`;
+  }
+  if (e.id === 'bigHand') {
+    const add = (EXACT.p[CAT.TRIPS] + EXACT.p[CAT.SF]) * e.promo.rate;
+    // Exact Pair Plus edge from this page's own enumeration and paytable.
+    const pp = -EXACT.p.reduce((s, p, cat) => s + p * (RULES.pairPlus[CAT_KEY[cat]] || -1), 0);
+    return `Adds ${(100 * add).toFixed(2)}% of the Pair Plus bet on average (exact): Pair Plus goes from -${(100 * pp).toFixed(2)}% to -${(100 * (pp - add)).toFixed(2)}%.`;
+  }
+  if (e.id === 'luckyWheel') {
+    const ev = ECON.wheelEV(ECON.WHEELS.bonus, ECON.TIERS[econTier()].mult);
+    const h = ECON.WHEELS.bonus.cooldownMs / 3600000;
+    return `Your Bonus Wheel: ${Math.round(ev)} expected chips every ${h}h becomes ${Math.round(2 * ev)} every ${h / 2}h.`;
+  }
+  if (e.id === 'questRush') {
+    const base = Math.round(ECON.QUEST_CHIPS * ECON.TIERS[econTier()].mult);
+    return `Your quest rewards: ${base.toLocaleString()} chips become ${(2 * base).toLocaleString()}.`;
+  }
+  if (e.id === 'doubleXp') return 'Rank up twice as fast.';
+  return '';
+}
+
+function econRenderRewards() {
+  econEnsureQuests();
+  econAccrueVault();
+  const t = now(), tier = econTier();
+
+  // Wheels
+  for (const which of ['bonus', 'rescue']) {
+    const w = ECON.WHEELS[which];
+    const mult = which === 'bonus' ? econBonusNow().mult : 1;
+    if (wheelDrawnMult[which] !== mult) econDrawWheel(which, mult);
+    const total = ECON.wheelTotal(w);
+    $('odds-' + which).innerHTML = w.slices.map(s =>
+      `<tr class="stat-row"><td>${ECON.slicePrize(s, mult).toLocaleString()} chips</td><td>${(100 * s.weight / total).toFixed(2)}%</td></tr>`
+    ).join('') + `<tr class="stat-row"><td><strong>Expected per spin</strong></td><td><strong>${ECON.wheelEV(w, mult).toFixed(1)}</strong></td></tr>`;
+  }
+  const bonusWait = econBonusReadyAt() - t.getTime();
+  $('spin-bonus').disabled = wheelSpinning || bonusWait > 0;
+  $('status-bonus').textContent = (bonusWait > 0 ? `Next spin in ${fmtWait(bonusWait)}. ` : 'Ready! ') +
+    `Every ${econBonusNow().cooldownMs / 3600000}h, prizes x${econBonusNow().mult} for your rank` +
+    (ECON.isActive(t, 'luckyWheel') ? ' (Lucky Wheel Saturday!)' : '') + '. Slices are drawn to scale: what you see is the real odds.';
+  $('spin-rescue').disabled = wheelSpinning || !econRescueReady();
+  $('status-rescue').textContent = econRescueReady()
+    ? 'Ready. Free whenever you drop under ' + ECON.WHEELS.rescue.availableBelow + ' chips. Same wheel for everyone.'
+    : chipsInPlay(S) > 0 ? 'Finish your current hand first.'
+    : `Unlocks whenever you're under ${ECON.WHEELS.rescue.availableBelow} chips, as often as you need it.`;
+
+  // Quests
+  const qs = S.econ.quests;
+  const rw = ECON.questReward(qs.tier, t);
+  const midnight = new Date(t.getFullYear(), t.getMonth(), t.getDate() + 1);
+  $('questList').innerHTML = qs.list.map(q =>
+    `<div class="quest${q.done ? ' done' : ''}"><div>${q.done ? '&#10003; ' : ''}${ECON.questText(q)}</div>` +
+    `<div class="qbar"><div style="width:${(100 * q.progress / q.target).toFixed(0)}%"></div></div>` +
+    `<div class="qmeta"><span>${q.progress} / ${q.target}</span><span>${rw.chips.toLocaleString()} chips + ${rw.xp} XP</span></div></div>`
+  ).join('') + `<div class="hint">${ECON.TIERS[qs.tier].name} quests. New set in ${fmtWait(midnight - t)}. ` +
+    'Friends at the same rank get the same quests.</div>';
+
+  // Events
+  const live = ECON.activeEvents(t);
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const hr = h => (h === 0 ? '12am' : h < 12 ? h + 'am' : h === 12 ? '12pm' : (h - 12) + 'pm');
+  $('eventList').innerHTML =
+    live.map(e => `<div class="ev live"><strong>Now: ${e.name}</strong><div>${e.desc}</div><div class="effect">${econEventEffect(e)}</div></div>`).join('') +
+    ECON.upcomingEvents(t, 5).filter(u => !live.includes(u.event)).map(u =>
+      `<div class="ev"><div>${u.event.name} <span class="when">${days[u.start.getDay()]} ${hr(u.event.fromHour)}` +
+      `${u.event.toHour < 24 ? '–' + hr(u.event.toHour) : ''}</span></div><div class="effect">${u.event.desc}</div></div>`
+    ).join('') +
+    '<div class="hint">Same calendar for everyone (your local time). Events add promo chips on top; they never change a game\'s cards or paytables.</div>';
+
+  // Shop
+  $('shop').innerHTML = ECON.SHOP.map(it => {
+    const owned = S.econ.owned.includes(it.id), eq = S.econ.equipped[it.kind] === it.id;
+    const sw = it.kind === 'title'
+      ? `<div class="sw" style="background:rgba(255,255,255,.06);font-style:italic">${it.text || '&mdash;'}</div>`
+      : `<div class="sw" style="background:${it.kind === 'back'
+          ? `repeating-linear-gradient(45deg, ${it.colors[0]} 0 6px, ${it.colors[1]} 6px 12px)`
+          : `radial-gradient(ellipse at 50% 0%, ${it.colors[0]}, ${it.colors[1]})`}"></div>`;
+    const btn = eq ? '<button disabled>Equipped</button>'
+      : owned ? `<button data-equip="${it.id}">Equip</button>`
+      : `<button data-buy="${it.id}" ${S.chips < it.price ? 'disabled' : ''}>Buy ${it.price.toLocaleString()}</button>`;
+    return `<div class="item${eq ? ' equipped' : ''}">${sw}<div>${it.name} <span style="color:#667">${it.kind}</span></div>${btn}</div>`;
+  }).join('');
+  if ($('shop').querySelectorAll) {
+    $('shop').querySelectorAll('[data-buy]').forEach(b => { b.onclick = () => { econBuy(b.dataset.buy); }; });
+    $('shop').querySelectorAll('[data-equip]').forEach(b => { b.onclick = () => { econEquip(b.dataset.equip); }; });
+  }
+
+  // Vault
+  const v = S.econ.vault, due = ECON.vaultInterest(v.minToday, tier);
+  const cap = Math.round(ECON.VAULT.capBase * ECON.TIERS[tier].mult);
+  $('vaultBox').innerHTML =
+    `<div class="vaultbal">${v.balance.toLocaleString()} <span>chips saved</span></div>` +
+    `<div class="hint" style="margin:4px 0 10px">Earns ${(100 * ECON.VAULT.rate).toFixed(0)}% a day, up to ${cap.toLocaleString()} a day at your rank. ` +
+    `Interest is paid on the lowest balance the vault held all day, so deposits start earning tomorrow. ` +
+    `Due at midnight: <strong>+${due.toLocaleString()}</strong>. Saved chips can't be bet, and they count toward your balance for the Rescue Wheel. ` +
+    `Interest earned so far: ${S.econ.ledger.interest.toLocaleString()}.</div>`;
+
+  // Tiers
+  const lvl = econLevel().level;
+  $('tierTable').innerHTML = ECON.TIERS.map((tr, i) =>
+    `<tr class="stat-row"${i === tier ? ' style="color:var(--chip)"' : ''}><td>${tr.name} (Lv ${tr.minLevel}+)</td>` +
+    `<td>limit ${tr.maxBet.toLocaleString()} &middot; rewards x${tr.mult}</td></tr>`).join('') +
+    `<tr><td colspan="2" class="hint" style="text-align:left">You're level ${lvl}. XP comes from playing (about 10-20 a round, ` +
+    `barely more for big bets) and quests, so rank tracks time at the table, not your bankroll. Every game's odds are identical at every rank.</td></tr>`;
+
+  // Ledger
+  const L = S.econ.ledger, rec = econReconcile();
+  const row = (k, v) => `<tr class="stat-row"><td>${k}</td><td>${v >= 0 ? '+' : ''}${v.toLocaleString()}</td></tr>`;
+  $('ledgerTable').innerHTML =
+    `<tr class="stat-row"><td>Opening balance</td><td>${L.opening.toLocaleString()}</td></tr>` +
+    row('Three Card Poker', S.stats.net) + row('Blackjack', S.bj.stats.net) + row('Free Bet', S.fb.stats.net) +
+    row('Bonus Wheel', L.bonusWheel) + row('Rescue Wheel', L.rescueWheel) + row('Quests', L.quests) +
+    row('Event promos', L.promo) + row('Vault interest', L.interest) + row('Shop', L.shop) + (L.admin ? row('Admin adjustments', L.admin) : '') +
+    (chipsInPlay(S) ? row('On the table right now', -chipsInPlay(S)) : '') +
+    (S.econ.vault.balance ? `<tr class="stat-row"><td>of which in the vault</td><td>${S.econ.vault.balance.toLocaleString()}</td></tr>` : '') +
+    `<tr class="stat-row"><td><strong>Total</strong></td><td><strong>${(S.chips + S.econ.vault.balance).toLocaleString()}</strong> ` +
+    `<span class="${rec.ok ? 'win' : 'lost'}">${rec.ok ? '&#10003; reconciles' : 'MISMATCH ' + rec.expected}</span></td></tr>`;
+}
+
+/* ===========================================================================
    ADMIN CONSOLE
    =========================================================================== */
 
@@ -857,7 +1969,7 @@ let adminUnlocked = false;
 const out = txt => { $('adminOut').textContent = txt; };
 
 document.addEventListener('keydown', e => {
-  if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a') {
+  if (RULES.adminEnabled && e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a') {
     e.preventDefault();
     $('admin').classList.toggle('open');
   }
@@ -880,9 +1992,9 @@ $('adminPass').addEventListener('keydown', e => { if (e.key === 'Enter') $('admi
 
 $('btnSetChips').onclick = () => {
   const v = parseInt($('setChips').value, 10);
-  if (!isNaN(v) && v >= 0) { S.chips = v; renderBank(); save(); out(`Chips set to ${v}.`); }
+  if (!isNaN(v) && v >= 0) { econGrant('admin', v - S.chips); renderBank(); save(); out(`Chips set to ${v} (recorded in the ledger as an admin adjustment).`); }
 };
-$('btnAddChips').onclick = () => { S.chips += 1000; renderBank(); save(); out('+1000 chips.'); };
+$('btnAddChips').onclick = () => { econGrant('admin', 1000); renderBank(); save(); out('+1000 chips (admin adjustment, in the ledger).'); };
 
 $('btnEnum').onclick = () => {
   const lines = ['Exact enumeration of all C(52,3) = 22,100 hands', ''];
@@ -1000,13 +2112,14 @@ $('btnCsv').onclick = () => {
       'Drop this into R, Python or a spreadsheet and test it properly.');
 };
 
-$('btnJson').onclick = () => out(JSON.stringify({ chips: S.chips, stats: S.stats }, null, 2));
+$('btnJson').onclick = () => out(JSON.stringify({ chips: S.chips, stats: S.stats, blackjack: S.bj.stats, freeBet: S.fb.stats, ledger: S.econ.ledger, reconcile: econReconcile() }, null, 2));
 
 $('btnReset').onclick = () => {
   if (!confirm('Wipe chips, stats and full hand history?')) return;
   S = blankState();
   save();
   renderBank(); renderStats(); renderLog();
+  bjRender(); bjRenderStats(); bjRenderLog(); applyCosmetics(); econRenderHeader(); showGame(S.game);
   out('Reset to a fresh state.');
 };
 
@@ -1014,11 +2127,11 @@ $('btnReset').onclick = () => {
    WIRING
    =========================================================================== */
 
-document.querySelectorAll('.betbox button').forEach(b => {
+document.querySelectorAll('[data-bet]').forEach(b => {
   b.onclick = () => {
     if (phase !== 'betting') return;
-    const k = b.dataset.bet, d = parseInt(b.dataset.d, 10);
-    S.bets[k] = Math.max(0, S.bets[k] + d);
+    const k = b.dataset.bet, dir = Math.sign(parseInt(b.dataset.d, 10));
+    S.bets[k] = ECON.stepBet(S.bets[k], dir, { min: RULES.minBet, max: econMaxBet(), multipleOf: 5, allowZero: true });
     renderBets(); save();
   };
 });
@@ -1032,21 +2145,62 @@ $('btnPlay').onclick = () => {
 };
 $('btnFold').onclick = () => { if (phase === 'decision') resolve(false); };
 
+/* ---------- blackjack wiring ---------- */
+document.querySelectorAll('.tabs button').forEach(b => { b.onclick = () => showGame(b.dataset.game); });
+document.querySelectorAll('[data-bjside]').forEach(b => {
+  b.onclick = () => {
+    if (TS().round) return;
+    const k = b.dataset.bjside;
+    TS().side[k] = ECON.stepBet(TS().side[k], Math.sign(parseInt(b.dataset.d, 10)),
+      { min: RULES.bjMinBet, max: econMaxBet(), multipleOf: RULES.bjBetStep, allowZero: true });
+    bjRender(); save();
+  };
+});
+document.querySelectorAll('[data-bjbet]').forEach(b => {
+  b.onclick = () => {
+    if (TS().round) return;
+    TS().bet = ECON.stepBet(TS().bet, Math.sign(parseInt(b.dataset.bjbet, 10)),
+      { min: RULES.bjMinBet, max: econMaxBet(), multipleOf: RULES.bjBetStep });
+    bjRender(); save();
+  };
+});
+$('bjDeal').onclick = bjDeal;
+for (const a of BJ_ACTIONS) bjBtn(a).onclick = () => bjAct(a);
+$('bjInsure').onclick = () => bjAct('insure');
+$('bjNoInsure').onclick = () => bjAct('decline');
+$('peek').addEventListener('change', () => bjRender());
+
+document.addEventListener('keydown', e => {
+  if (!BJ_TABLES[S.game] || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+  if ($('admin').classList.contains('open')) return;
+  const k = e.key.toLowerCase();
+  const map = { h: 'hit', s: 'stand', d: 'double', p: 'split' };
+  if (map[k]) { e.preventDefault(); bjAct(map[k]); }
+  else if (k === 'i') bjAct('insure');
+  else if (k === 'n') bjAct('decline');
+  else if (k === 'enter' && !TS().round) { e.preventDefault(); bjDeal(); }
+});
+
 /* ---------- daily bonus ---------- */
-(function dailyBonus() {
-  const now = Date.now();
-  if (now - S.lastBonus >= RULES.dailyCooldownMs) {
-    S.chips += RULES.dailyBonus;
-    S.lastBonus = now;
-    save();
-    setTimeout(() => {
-      $('msg').innerHTML = `<span class="win">Timed bonus: +${RULES.dailyBonus} chips.</span> ` +
-        `Next one in ${(RULES.dailyCooldownMs / 3600000)}h. Place your bets.`;
-    }, 400);
-  }
-})();
+/* ---------- economy wiring ---------- */
+$('spin-bonus').onclick = () => econSpinClick('bonus');
+$('spin-rescue').onclick = () => econSpinClick('rescue');
+const vaultAmt = () => Math.floor(Number($('vaultAmt').value));
+$('vaultIn').onclick = () => { if (!econVault(vaultAmt())) $('rewardsMsg').textContent = 'Enter an amount you have on hand.'; };
+$('vaultOut').onclick = () => { if (!econVault(-vaultAmt())) $('rewardsMsg').textContent = 'Enter an amount that is in the vault.'; };
+$('vaultAllIn').onclick = () => { if (S.chips > 0) econVault(S.chips); };
+$('vaultAllOut').onclick = () => { if (S.econ.vault.balance > 0) econVault(-S.econ.vault.balance); };
+// Countdowns and event start/end. Browser only (the Node tests have no timers).
+if (typeof setInterval === 'function') {
+  setInterval(() => { econRenderHeader(); if (S.game === 'rewards' && !wheelSpinning) econRenderRewards(); }, 15000);
+}
 
 /* ---------- boot ---------- */
+econEnsureQuests();
+econAccrueVault();
+applyCosmetics();
+econRenderHeader();
 renderBank();
 renderBets();
 renderCards($('playerCards'), [], false);
@@ -1054,6 +2208,30 @@ renderCards($('dealerCards'), [], false);
 renderStats();
 renderLog();
 renderPaytables();
+bjRender();
+bjRenderStats();
+bjRenderLog();
+bjRenderRules();
+showGame(S.game);
+if (TS().round) $('bjMsg').textContent = 'Round in progress, restored from your last visit.';
+
+// A Three Card Poker hand that was waiting on play/fold when the page closed.
+if (S.tcpRound) {
+  player = S.tcpRound.player;
+  dealer = S.tcpRound.dealer;
+  pEval = eval3(...player);
+  dEval = eval3(...dealer);
+  phase = 'decision';
+  renderCards($('playerCards'), player, false);
+  renderCards($('dealerCards'), dealer, true);
+  $('playerHand').textContent = pEval.name;
+  $('btnDeal').disabled = true;
+  $('btnPlay').disabled = S.chips < S.bets.ante;
+  $('btnFold').disabled = false;
+  $('msg').textContent = 'Hand restored from your last visit. Play or fold?';
+} else if (Date.now() >= econBonusReadyAt()) {
+  $('msg').innerHTML = 'Your <a href="#" onclick="showGame(\'rewards\');return false">Bonus Wheel</a> is ready to spin. Place your bets.';
+}
 </script>
 </body>
 </html>
