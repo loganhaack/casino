@@ -352,6 +352,18 @@
   .mini-quest .qbar { height: 5px; background: rgba(255,255,255,.08); border-radius: 3px; margin-top: 4px; overflow: hidden; }
   .mini-quest .qbar div { height: 100%; background: var(--win); }
   .mini-quest .st { font: 12px var(--mono); color: var(--text-dim); flex: none; }
+  .acct { display: flex; flex-direction: column; gap: 8px; }
+  .acct .sub { font-size: 12px; color: var(--text-dim); }
+  .acct .sub.lost { color: var(--lose); }
+  .acctrow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .acctrow input { flex: 1 1 200px; min-width: 0; padding: 8px 10px; font: 14px system-ui, sans-serif; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 6px; }
+  .acctrow .btn-sm { padding: 9px 12px; }
+  .avatars { display: flex; flex-wrap: wrap; gap: 6px; }
+  .av { width: 42px; height: 42px; font-size: 24px; line-height: 1; border-radius: 9px; cursor: pointer; background: rgba(255,255,255,.06); border: 2px solid transparent; }
+  .av.on { border-color: var(--chip); background: rgba(232,197,71,.12); }
+  .me { display: flex; align-items: center; gap: 12px; }
+  .me .bigav { font-size: 40px; line-height: 1; }
+  .me strong { font-size: 17px; }
 
   /* ---------- rank / events ---------- */
   .rank { min-width: 130px; }
@@ -502,7 +514,7 @@
       <button data-game="rewards">Rewards</button>
     </nav>
     <div class="rank" id="rankBox">
-      <div class="rank-line"><span id="rankLevel">Lv 1</span> <span class="tier" id="rankTier">Bronze</span> <span class="ptitle" id="rankTitle"></span></div>
+      <div class="rank-line"><span id="rankWho"></span><span id="rankLevel">Lv 1</span> <span class="tier" id="rankTier">Bronze</span> <span class="ptitle" id="rankTitle"></span></div>
       <div class="xpbar"><div id="xpFill"></div></div>
       <div class="rank-sub" id="xpText"></div>
     </div>
@@ -529,6 +541,7 @@
         <div class="todo" id="homeTodo"></div>
       </div>
     </div>
+    <div class="panel acct" id="homeAccount" style="margin-top:14px"></div>
     <div class="games" id="homeGames"></div>
     <div class="grid2">
       <div class="panel">
@@ -2264,7 +2277,7 @@ function econAfterRound(facts) {
   }
   econRenderHeader();
   if (S.game === 'rewards') econRenderRewards();
-  if (S.game === 'home') renderHome();
+  // (No Home redraw here: rounds only happen on a game tab, and Home redraws when shown.)
   return lines;
 }
 
@@ -2361,6 +2374,194 @@ function renderHome() {
     : '<div class="hint" style="margin:0">Play a few rounds: finished quests, level ups and wheel spins show up here.</div>';
 }
 const r0 = n => n.toLocaleString();
+
+/* ===========================================================================
+   ACCOUNTS (Supabase). Stage 2, step 1: sign-in and profiles only.
+   ---------------------------------------------------------------------------
+   Plain fetch() against Supabase's Auth and REST endpoints, no library, so
+   index.html stays dependency-free (hard rule 4). Nothing here touches chips,
+   cards or odds: balances still live in this browser until dealing moves to
+   the server (step 2). The publishable key below is public by design; the
+   row-level security in supabase/migrations/ is what protects the data.
+   Off when opened from a file, and absent in the Node harnesses.
+   =========================================================================== */
+
+const CLOUD = {
+  url: 'https://kavaswxswtkvguzdljyi.supabase.co',
+  key: 'sb_publishable_TvlECMZYlNJCKH07o3DcHw_zSx_R-b6',   // publishable: safe in the page
+};
+const AUTH_KEY = 'casino.auth.v1';
+const AVATARS = [
+  ['fox', '&#129418;'], ['bear', '&#128059;'], ['panda', '&#128060;'], ['frog', '&#128056;'],
+  ['octopus', '&#128025;'], ['owl', '&#129417;'], ['tiger', '&#128047;'], ['lion', '&#129409;'],
+  ['monkey', '&#128053;'], ['penguin', '&#128039;'], ['unicorn', '&#129412;'], ['dragon', '&#128050;'],
+];
+const AVATAR_ICON = Object.fromEntries(AVATARS);
+const NAME_RE = /^[A-Za-z0-9 _.-]{2,20}$/;
+
+const cloudOn = () => typeof fetch === 'function' && typeof location !== 'undefined' && /^https?:$/.test(location.protocol);
+let auth = null;      // { access_token, refresh_token, expires_at (s), user: { id, email } }
+let profile = null;   // { id, display_name, avatar }
+let acct = { msg: '', busy: false, editing: false, pick: 'fox', sent: '' };
+
+async function sb(path, { method = 'GET', body, token, prefer } = {}) {
+  const headers = { apikey: CLOUD.key, 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = 'Bearer ' + token;
+  if (prefer) headers.Prefer = prefer;
+  const res = await fetch(CLOUD.url + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (e) { /* not JSON */ }
+  if (!res.ok) {
+    const err = new Error((data && (data.msg || data.message || data.error_description || data.error)) || `HTTP ${res.status}`);
+    err.status = res.status; err.code = data && data.code;
+    throw err;
+  }
+  return data;
+}
+
+function authStore() {
+  try { if (auth) localStorage.setItem(AUTH_KEY, JSON.stringify(auth)); else localStorage.removeItem(AUTH_KEY); } catch (e) { /* storage blocked */ }
+}
+
+/** After clicking the emailed link, Supabase sends the browser back with the session in the URL fragment. */
+function authFromUrl() {
+  const h = location.hash.replace(/^#/, '');
+  if (!/access_token=|error=/.test(h)) return;
+  const p = new URLSearchParams(h);
+  if (p.get('access_token')) {
+    const now_s = Math.floor(Date.now() / 1000);
+    auth = { access_token: p.get('access_token'), refresh_token: p.get('refresh_token'),
+             expires_at: parseInt(p.get('expires_at'), 10) || now_s + (parseInt(p.get('expires_in'), 10) || 3600), user: null };
+    authStore();
+  } else {
+    acct.msg = 'Sign-in link problem: ' + (p.get('error_description') || p.get('error')).replace(/\+/g, ' ') + '. Send a new one.';
+  }
+  history.replaceState(null, '', location.pathname + location.search);   // don't leave tokens in the address bar
+}
+
+/** A valid access token, refreshing it if it's about to expire. Null when signed out. */
+async function authToken() {
+  if (!auth) return null;
+  if (auth.expires_at - 60 > Date.now() / 1000) return auth.access_token;
+  try {
+    const r = await sb('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: auth.refresh_token } });
+    auth = { access_token: r.access_token, refresh_token: r.refresh_token,
+             expires_at: r.expires_at || Math.floor(Date.now() / 1000) + r.expires_in, user: r.user ? { id: r.user.id, email: r.user.email } : auth.user };
+    authStore();
+    return auth.access_token;
+  } catch (e) {
+    auth = null; profile = null; authStore();
+    acct.msg = 'Your sign-in expired. Send yourself a new link.';
+    return null;
+  }
+}
+
+async function acctRefresh() {
+  const token = await authToken();
+  if (!token) { profile = null; renderAccount(); return; }
+  if (!auth.user) { const u = await sb('/auth/v1/user', { token }); auth.user = { id: u.id, email: u.email }; authStore(); }
+  const rows = await sb(`/rest/v1/profiles?id=eq.${auth.user.id}&select=id,display_name,avatar`, { token });
+  profile = rows && rows[0] || null;
+  if (profile) acct.pick = profile.avatar;
+  renderAccount(); econRenderHeader();
+}
+
+async function acctSendLink(email) {
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { acct.msg = 'That doesn\'t look like an email address.'; renderAccount(); return; }
+  acct.busy = true; acct.msg = ''; renderAccount();
+  try {
+    const back = encodeURIComponent(location.origin + location.pathname);
+    await sb(`/auth/v1/otp?redirect_to=${back}`, { method: 'POST', body: { email, create_user: true } });
+    acct.sent = email;
+  } catch (e) {
+    acct.msg = e.status === 429 ? 'Too many emails just now. Wait a few minutes and try again.' : 'Couldn\'t send the link: ' + e.message;
+  }
+  acct.busy = false; renderAccount();
+}
+
+async function acctSave(name) {
+  name = name.trim().replace(/\s+/g, ' ');
+  if (!NAME_RE.test(name)) { acct.msg = 'Names are 2 to 20 letters, numbers, spaces, or . _ -'; renderAccount(); return; }
+  acct.busy = true; acct.msg = ''; renderAccount();
+  try {
+    const token = await authToken();
+    if (!token) throw new Error('Signed out');
+    const body = { display_name: name, avatar: acct.pick };
+    const rows = profile
+      ? await sb(`/rest/v1/profiles?id=eq.${auth.user.id}`, { method: 'PATCH', body, token, prefer: 'return=representation' })
+      : await sb('/rest/v1/profiles', { method: 'POST', body: Object.assign({ id: auth.user.id }, body), token, prefer: 'return=representation' });
+    profile = rows[0];
+    acct.editing = false;
+    toast('info', 'Profile saved', `You're ${profile.display_name}.`);
+  } catch (e) {
+    acct.msg = e.code === '23505' || e.status === 409 ? 'That name is taken. Try another.' : 'Couldn\'t save: ' + e.message;
+  }
+  acct.busy = false; renderAccount(); econRenderHeader();
+}
+
+async function acctSignOut() {
+  const token = auth && auth.access_token;
+  auth = null; profile = null; acct = { msg: '', busy: false, editing: false, pick: 'fox', sent: '' };
+  authStore(); renderAccount(); econRenderHeader();
+  if (token) { try { await sb('/auth/v1/logout', { method: 'POST', token }); } catch (e) { /* already gone */ } }
+}
+
+function avatarPickerHTML() {
+  return '<div class="avatars">' + AVATARS.map(([id, e]) =>
+    `<button class="av${acct.pick === id ? ' on' : ''}" data-avatar="${id}" title="${id}">${e}</button>`).join('') + '</div>';
+}
+
+function renderAccount() {
+  const el = $('homeAccount');
+  if (!el) return;
+  const note = '<div class="sub">Profiles only, for now. Your chips still live in this browser; shared balances arrive when dealing moves to the server.</div>';
+  const msg = acct.msg ? `<div class="sub lost">${acct.msg}</div>` : '';
+  let html = '<h3>Your account</h3>';
+  if (!cloudOn()) {
+    html += '<div class="sub">Accounts work on the hosted site, <a href="https://loganhaack.github.io/casino/">loganhaack.github.io/casino</a>. Opened from a file, everything else still works and saves in this browser.</div>';
+  } else if (!auth) {
+    html += acct.sent
+      ? `<div>Check <strong>${acct.sent.replace(/[&<>"']/g, c => '&#' + c.charCodeAt(0) + ';')}</strong> for a sign-in link, then open it on this device.</div><div class="sub">Nothing after a few minutes? Check spam, or <a href="#" data-acct="resend">send another</a>.</div>`
+      : '<div class="sub">Sign in to get a name and avatar your friends will see. No password: we email you a link.</div>' +
+        `<div class="acctrow"><input type="email" id="acctEmail" placeholder="you@example.com" autocomplete="email"><button class="btn-sm" data-acct="send"${acct.busy ? ' disabled' : ''}>Email me a link</button></div>` + note;
+  } else if (!profile || acct.editing) {
+    html += `<div class="sub">${profile ? 'Edit your profile' : 'Signed in' + (auth.user ? ' as ' + auth.user.email : '') + '. Pick a name and avatar.'}</div>` +
+      avatarPickerHTML() +
+      `<div class="acctrow"><input type="text" id="acctName" maxlength="20" placeholder="Display name" value="${profile ? profile.display_name : ''}"><button class="btn-sm" data-acct="save"${acct.busy ? ' disabled' : ''}>Save</button>` +
+      (profile ? '<button class="btn-sm ghost" data-acct="cancel">Cancel</button>' : '') + '</div>' + note;
+  } else {
+    html += `<div class="me"><span class="bigav">${AVATAR_ICON[profile.avatar] || AVATAR_ICON.fox}</span><div><strong>${profile.display_name}</strong>` +
+      `<div class="sub">${auth.user ? auth.user.email : ''}</div></div></div>` +
+      '<div class="acctrow"><button class="btn-sm ghost" data-acct="edit">Edit profile</button><button class="btn-sm ghost" data-acct="signout">Sign out</button></div>' + note;
+  }
+  el.innerHTML = html + msg;
+}
+
+function acctClick(el) {
+  const a = el.dataset.acct;
+  if (a === 'send') acctSendLink(($('acctEmail').value || '').trim());
+  else if (a === 'resend') { acct.sent = ''; renderAccount(); }
+  else if (a === 'save') acctSave($('acctName').value || '');
+  else if (a === 'edit') { acct.editing = true; acct.msg = ''; renderAccount(); }
+  else if (a === 'cancel') { acct.editing = false; acct.msg = ''; acct.pick = profile.avatar; renderAccount(); }
+  else if (a === 'signout') acctSignOut();
+}
+
+async function acctBoot() {
+  if (!cloudOn()) { renderAccount(); return; }
+  authFromUrl();
+  if (!auth) { try { auth = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); } catch (e) { auth = null; } }
+  renderAccount();
+  if (!auth) return;
+  try { await acctRefresh(); }
+  catch (e) {
+    if (e.status === 401 || e.status === 403) { auth = null; profile = null; authStore(); acct.msg = 'Your sign-in expired. Send yourself a new link.'; }
+    else acct.msg = 'Couldn\'t reach the account server: ' + e.message;
+    renderAccount();
+  }
+  if (auth && !profile) showGame('home');   // just signed in: take them to name + avatar
+}
 
 /* ---------- quest claiming ---------- */
 
@@ -2676,6 +2877,7 @@ function applyCosmetics() {
 function econRenderHeader() {
   const lv = econLevel(), tier = ECON.TIERS[econTier()];
   $('rankLevel').textContent = `Lv ${lv.level}`;
+  $('rankWho').innerHTML = profile ? `${AVATAR_ICON[profile.avatar] || ''} ${profile.display_name} &middot; ` : '';
   $('rankTier').textContent = tier.name;
   $('rankTitle').textContent = ECON.SHOP_BY_ID[S.econ.equipped.title].text;
   $('xpFill').style.width = (100 * lv.into / lv.need).toFixed(1) + '%';
@@ -3062,7 +3264,7 @@ $('vaultAllOut').onclick = () => { if (S.econ.vault.balance > 0) econVault(-S.ec
  * rendered (bell list, toasts, Home, Rewards). */
 if (typeof document.addEventListener === 'function') {
   document.addEventListener('click', e => {
-    const el = e.target && e.target.closest ? e.target.closest('[data-claim],[data-claimall],[data-go],[data-clearnotes],#bell') : null;
+    const el = e.target && e.target.closest ? e.target.closest('[data-claim],[data-claimall],[data-go],[data-clearnotes],[data-acct],[data-avatar],#bell') : null;
     if (!el) {
       if (!$('notesPanel').hidden && !(e.target.closest && e.target.closest('#notesPanel'))) toggleNotes(false);
       return;
@@ -3071,8 +3273,21 @@ if (typeof document.addEventListener === 'function') {
     e.preventDefault();
     if (el.dataset.claim !== undefined) claimClick(parseInt(el.dataset.claim, 10), el.dataset.day);
     else if (el.dataset.claimall) claimAllClick();
+    else if (el.dataset.acct) acctClick(el);
+    else if (el.dataset.avatar) {
+      acct.pick = el.dataset.avatar;   // re-highlight in place so a half-typed name isn't wiped
+      document.querySelectorAll('[data-avatar]').forEach(b => b.classList.toggle('on', b === el));
+    }
     else if (el.dataset.clearnotes) { S.econ.notes = S.econ.notes.filter(n => noteActionHTML(n)); save(); renderNotes(); if (S.game === 'home') renderHome(); }
     else if (el.dataset.go) { toggleNotes(false); showGame(el.dataset.go); if (typeof window !== 'undefined' && window.scrollTo) window.scrollTo(0, 0); }
+  });
+}
+
+if (typeof document.addEventListener === 'function') {
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || !e.target) return;
+    if (e.target.id === 'acctEmail') acctSendLink(e.target.value.trim());
+    else if (e.target.id === 'acctName') acctSave(e.target.value);
   });
 }
 
@@ -3092,6 +3307,7 @@ econEnsureQuests();
 econAccrueVault();
 econCheckTimers();
 renderNotes();
+acctBoot();
 applyCosmetics();
 econRenderHeader();
 renderBank();

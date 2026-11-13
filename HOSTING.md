@@ -124,7 +124,16 @@ The tests keep working: they already drive `blackjack-core.js` and
 and chip animations are display-only and don't change: the page just gets
 the settled result from the server instead of computing it.
 
-### Getting started when you're ready
+### Progress
+
+- [x] Project created (`kavaswxswtkvguzdljyi`), email sign-in on, Site URL and
+      redirect set to the Pages address.
+- [x] Step 1: magic-link sign-in and profiles (name + avatar) on the Home tab.
+      Schema: `supabase/migrations/20261113000001_profiles.sql`. Anonymous
+      access verified refused.
+- [ ] Step 2: server-side balances, ledger, and blackjack dealing.
+
+### Getting started (reference)
 
 1. **Create the project.** Sign up at https://supabase.com (free tier), make
    a new project, choose a region near you and your friends, and save the

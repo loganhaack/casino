@@ -172,6 +172,22 @@ economy section only applies those rules.
 - A Three Card Poker hand awaiting play/fold is persisted in `S.tcpRound`
   (previously a reload there destroyed the stake).
 
+## Accounts (Supabase, Stage 2)
+
+- Project `kavaswxswtkvguzdljyi`. The page holds the **publishable** key
+  (public by design). Never put a secret / service_role key in the page, the
+  repo, or a chat; it bypasses RLS.
+- The page talks to Supabase with plain `fetch()` (ACCOUNTS section), no
+  library, to keep hard rule 4. Magic-link sign-in; the session lives in
+  `localStorage` under `casino.auth.v1`.
+- Schema is in `supabase/migrations/`, applied by pasting into the dashboard
+  SQL Editor. Every table gets RLS on, `revoke all` from `anon`/`authenticated`,
+  then explicit column grants and policies. Verify from outside with the
+  publishable key that anonymous reads/writes get `42501`.
+- Step 1 (done): profiles only (name, avatar). Chips still live in the browser.
+  Step 2: balances + ledger + dealing move into Edge Functions together. A
+  balance column the browser can write is a balance anyone can edit.
+
 ## Next up
 
 Going live: see HOSTING.md. Stage 1 is static hosting as-is. Stage 2 is
