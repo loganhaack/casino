@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Three Card Poker</title>
+<style>
+  :root {
+    --felt:        #0f4034;
+    --felt-dark:   #0a2c24;
+    --rail:        #3d2817;
+    --rail-light:  #5a3a22;
+    --chip:        #e8c547;
+    --chip-dim:    #8a7530;
+    --text:        #e8e4d9;
+    --text-dim:    #9aa49f;
+    --win:         #5fd68a;
+    --lose:        #e05c5c;
+    --push:        #d9a441;
+    --panel:       #12191c;
+    --panel-2:     #1a2327;
+    --border:      #2a373c;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--panel);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
+
+  /* ---------- top bar ---------- */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap;
+    padding: 12px 16px; margin-bottom: 14px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+  }
+  .brand { font-weight: 650; letter-spacing: .02em; }
+  .brand small { display:block; font-weight:400; font-size:11px; color: var(--text-dim); letter-spacing:.06em; text-transform:uppercase; }
+  .bank { text-align: right; }
+  .bank .amt { font: 650 26px/1 var(--mono); color: var(--chip); }
+  .bank .lbl { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em; }
+
+  /* ---------- table ---------- */
+  .felt {
+    background: radial-gradient(ellipse at 50% 0%, var(--felt) 0%, var(--felt-dark) 100%);
+    border: 10px solid var(--rail);
+    border-radius: 16px;
+    padding: 20px 16px;
+    box-shadow: inset 0 2px 30px rgba(0,0,0,.5);
+  }
+
+  .seat { margin-bottom: 18px; }
+  .seat-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .1em;
+    color: rgba(255,255,255,.45); margin-bottom: 8px;
+  }
+
+  .cards { display: flex; gap: 10px; min-height: 108px; }
+
+  .card {
+    width: 74px; height: 104px; border-radius: 7px;
+    background: #fdfcf7; color: #1a1a1a;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 7px 8px; font-weight: 650;
+    box-shadow: 0 3px 8px rgba(0,0,0,.4);
+    user-select: none;
+  }
+  .card.red { color: #c0392b; }
+  .card .r { font-size: 21px; line-height: 1; }
+  .card .s { font-size: 24px; line-height: 1; align-self: flex-end; }
+  .card.back {
+    background: repeating-linear-gradient(45deg, #2a4d8f 0 6px, #1e3a6e 6px 12px);
+    border: 2px solid #fdfcf7;
+  }
+  .card.empty {
+    background: transparent; border: 2px dashed rgba(255,255,255,.15); box-shadow: none;
+  }
+
+  .handname {
+    margin-top: 8px; font-size: 13px; font-weight: 600;
+    color: rgba(255,255,255,.75); min-height: 20px;
+  }
+  .handname .tag {
+    font-size: 11px; font-weight: 500; padding: 1px 7px; border-radius: 10px;
+    margin-left: 6px; letter-spacing: .04em;
+  }
+  .tag.q { background: rgba(95,214,138,.18); color: var(--win); }
+  .tag.nq { background: rgba(217,164,65,.18); color: var(--push); }
+
+  /* ---------- betting ---------- */
+  .bets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 16px 0; }
+  .betbox {
+    background: rgba(0,0,0,.28); border: 1px solid rgba(255,255,255,.12);
+    border-radius: 9px; padding: 10px; text-align: center;
+  }
+  .betbox.active { border-color: var(--chip); box-shadow: 0 0 0 1px rgba(232,197,71,.3); }
+  .betbox .name { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: rgba(255,255,255,.55); }
+  .betbox .val { font: 650 22px/1.3 var(--mono); color: var(--chip); }
+  .betbox .res { font-size: 12px; font-weight: 600; min-height: 16px; }
+  .betbox .adj { display: flex; gap: 5px; justify-content: center; margin-top: 7px; }
+  .betbox button {
+    flex: 1; padding: 5px 0; font-size: 13px; font-weight: 650;
+    background: rgba(255,255,255,.08); color: var(--text);
+    border: 1px solid rgba(255,255,255,.14); border-radius: 5px; cursor: pointer;
+  }
+  .betbox button:hover:not(:disabled) { background: rgba(255,255,255,.16); }
+  .betbox button:disabled { opacity: .3; cursor: not-allowed; }
+
+  .win  { color: var(--win); }
+  .lost { color: var(--lose); }
+  .pushc{ color: var(--push); }
+
+  /* ---------- actions ---------- */
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  .actions button {
+    flex: 1; min-width: 120px; padding: 14px;
+    font-size: 15px; font-weight: 650; letter-spacing: .03em;
+    border: none; border-radius: 9px; cursor: pointer;
+    background: var(--chip); color: #1a1a1a;
+  }
+  .actions button.ghost { background: rgba(255,255,255,.1); color: var(--text); }
+  .actions button.danger { background: #a83f3f; color: #fff; }
+  .actions button:disabled { opacity: .3; cursor: not-allowed; }
+
+  .msg {
+    margin-top: 14px; padding: 11px 14px; border-radius: 8px;
+    background: rgba(0,0,0,.3); font-size: 14px; min-height: 42px;
+    border-left: 3px solid var(--chip);
+  }
+  .hint { font-size: 12px; color: rgba(255,255,255,.5); margin-top: 6px; }
+
+  /* ---------- panels ---------- */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+  .panel {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px;
+  }
+  .panel h3 {
+    margin: 0 0 10px; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .1em; color: var(--text-dim); font-weight: 600;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td { padding: 3px 0; }
+  td:last-child { text-align: right; font-family: var(--mono); }
+  .stat-row td:first-child { color: var(--text-dim); }
+
+  .log {
+    max-height: 190px; overflow-y: auto;
+    font: 12px/1.7 var(--mono); color: var(--text-dim);
+  }
+  .log div { border-bottom: 1px solid rgba(255,255,255,.05); padding: 2px 0; }
+
+  /* ---------- admin ---------- */
+  #admin {
+    position: fixed; inset: 0; z-index: 100; display: none;
+    background: rgba(0,0,0,.8); padding: 20px; overflow-y: auto;
+  }
+  #admin.open { display: block; }
+  .adminbox {
+    max-width: 680px; margin: 30px auto; background: var(--panel-2);
+    border: 1px solid var(--chip); border-radius: 10px; padding: 20px;
+  }
+  .adminbox h2 { margin: 0 0 4px; font-size: 16px; }
+  .adminbox .sub { font-size: 12px; color: var(--text-dim); margin-bottom: 16px; }
+  .adminbox fieldset {
+    border: 1px solid var(--border); border-radius: 7px; padding: 12px; margin-bottom: 12px;
+  }
+  .adminbox legend { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim); padding: 0 6px; }
+  .adminbox button {
+    padding: 7px 12px; margin: 3px 3px 3px 0; font-size: 13px;
+    background: rgba(255,255,255,.1); color: var(--text);
+    border: 1px solid var(--border); border-radius: 5px; cursor: pointer;
+  }
+  .adminbox button:hover { background: rgba(255,255,255,.18); }
+  .adminbox input {
+    padding: 7px 9px; font: 13px var(--mono); width: 150px;
+    background: var(--panel); color: var(--text);
+    border: 1px solid var(--border); border-radius: 5px;
+  }
+  #adminOut {
+    font: 11px/1.6 var(--mono); white-space: pre-wrap; max-height: 260px;
+    overflow-y: auto; background: var(--panel); padding: 10px;
+    border-radius: 6px; margin-top: 10px; color: var(--text-dim);
+  }
+
+  footer { margin-top: 18px; font-size: 11px; color: var(--text-dim); text-align: center; }
+  kbd {
+    font: 11px var(--mono); background: var(--panel-2); padding: 1px 5px;
+    border: 1px solid var(--border); border-radius: 3px;
+  }
+
+  @media (max-width: 620px) {
+    .grid2 { grid-template-columns: 1fr; }
+    .bets { grid-template-columns: 1fr; }
+    .card { width: 62px; height: 88px; }
+    .card .r { font-size: 18px; } .card .s { font-size: 20px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">Three Card Poker<small>verifiable build</small></div>
+    <div class="bank">
+      <div class="amt" id="bank">0</div>
+      <div class="lbl">chips</div>
+    </div>
+  </header>
+
+  <div class="felt">
+    <div class="seat">
+      <div class="seat-label">Dealer</div>
+      <div class="cards" id="dealerCards"></div>
+      <div class="handname" id="dealerHand"></div>
+    </div>
+
+    <div class="seat">
+      <div class="seat-label">You</div>
+      <div class="cards" id="playerCards"></div>
+      <div class="handname" id="playerHand"></div>
+    </div>
+
+    <div class="bets">
+      <div class="betbox" id="box-ante">
+        <div class="name">Ante / Play</div>
+        <div class="val" id="bet-ante">0</div>
+        <div class="res" id="res-ante"></div>
+        <div class="adj">
+          <button data-bet="ante" data-d="-5">&minus;</button>
+          <button data-bet="ante" data-d="5">+</button>
+        </div>
+      </div>
+      <div class="betbox" id="box-pp">
+        <div class="name">Pair Plus</div>
+        <div class="val" id="bet-pp">0</div>
+        <div class="res" id="res-pp"></div>
+        <div class="adj">
+          <button data-bet="pp" data-d="-5">&minus;</button>
+          <button data-bet="pp" data-d="5">+</button>
+        </div>
+      </div>
+      <div class="betbox" id="box-scb">
+        <div class="name">6 Card Bonus</div>
+        <div class="val" id="bet-scb">0</div>
+        <div class="res" id="res-scb"></div>
+        <div class="adj">
+          <button data-bet="scb" data-d="-5">&minus;</button>
+          <button data-bet="scb" data-d="5">+</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="btnDeal">Deal</button>
+      <button id="btnPlay" disabled>Play (2&times; ante)</button>
+      <button id="btnFold" class="ghost" disabled>Fold</button>
+    </div>
+
+    <div class="msg" id="msg">Place your bets.</div>
+    <div class="hint" id="hint"></div>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h3>Session — observed vs. exact</h3>
+      <table id="stats"></table>
+    </div>
+    <div class="panel">
+      <h3>Hand log</h3>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:14px">
+    <h3>Paytables in force</h3>
+    <div class="grid2" style="margin:0">
+      <table id="ppTable"></table>
+      <table id="scbTable"></table>
+    </div>
+  </div>
+
+  <footer>
+    Shuffle: Fisher&ndash;Yates over <code>crypto.getRandomValues</code>, rejection-sampled.
+    Admin console: <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd>
+  </footer>
+</div>
+
+<!-- ===================== ADMIN CONSOLE ===================== -->
+<div id="admin">
+  <div class="adminbox">
+    <h2>Admin console</h2>
+    <div class="sub">
+      Client-side only. This is obscurity, not security &mdash; anyone with devtools
+      can reach these functions. Move dealing server-side before chips matter.
+    </div>
+
+    <div id="adminGate">
+      <fieldset>
+        <legend>Passphrase</legend>
+        <input type="password" id="adminPass" placeholder="passphrase">
+        <button id="adminUnlock">Unlock</button>
+      </fieldset>
+    </div>
+
+    <div id="adminPanel" style="display:none">
+      <fieldset>
+        <legend>Bankroll</legend>
+        <input type="number" id="setChips" placeholder="amount">
+        <button id="btnSetChips">Set chips</button>
+        <button id="btnAddChips">+1000</button>
+      </fieldset>
+
+      <fieldset>
+        <legend>Verification</legend>
+        <button id="btnEnum">Enumerate all 22,100 hands</button>
+        <button id="btnChi">Chi-square vs. session</button>
+        <button id="btnMonte">Monte Carlo 200k deals</button>
+      </fieldset>
+
+      <fieldset>
+        <legend>Data</legend>
+        <button id="btnCsv">Download hand log (CSV)</button>
+        <button id="btnJson">Dump state (JSON)</button>
+        <button id="btnReset" style="border-color:#a83f3f;color:#e88">Reset everything</button>
+      </fieldset>
+
+      <fieldset>
+        <legend>Debug</legend>
+        <label style="font-size:13px">
+          <input type="checkbox" id="peek" style="width:auto"> Reveal dealer hole cards
+        </label>
+      </fieldset>
+    </div>
+
+    <div id="adminOut"></div>
+    <button id="adminClose" style="margin-top:12px">Close</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ===========================================================================
+   RULES / CONFIG
+   Everything tunable lives here. Swap these to match whatever your casino
+   actually spreads, then re-run the enumerator to see the new house edge.
+   =========================================================================== */
+
+const RULES = {
+  // Pair Plus: hand category -> payout (to 1)
+  pairPlus: { pair: 1, flush: 3, straight: 6, trips: 30, straightFlush: 40 },
+
+  // Ante Bonus: paid on the ante regardless of dealer qualifying or winning
+  anteBonus: { straight: 1, trips: 4, straightFlush: 5 },
+
+  // Six Card Bonus: best 5-card hand from your 3 + dealer's 3
+  sixCard: {
+    trips: 7, straight: 10, flush: 15, fullHouse: 20,
+    quads: 100, straightFlush: 200, royalFlush: 1000,
+  },
+
+  minBet: 5,
+  startingChips: 1000,
+  brokeFloor: 100,      // handed out when you hit zero
+  dailyBonus: 250,
+  dailyCooldownMs: 6 * 60 * 60 * 1000,
+
+  // Admin gate. Change this. It is obfuscation only.
+  adminPass: 'felt',
+};
+
+/* ===========================================================================
+   CARD MODEL
+   Card = integer 0..51.  rank = c % 13 (0=Two .. 12=Ace), suit = (c/13)|0
+   =========================================================================== */
+
+const RANKS = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+const SUITS = ['♣','♦','♥','♠'];
+const rankOf = c => c % 13;
+const suitOf = c => (c / 13) | 0;
+
+/* ---------- RNG ----------------------------------------------------------
+   crypto.getRandomValues with rejection sampling to avoid modulo bias.
+   Math.random is almost certainly fine for this, but when you are down nine
+   hands in a row you want to be able to rule it out, not argue about it.
+   ------------------------------------------------------------------------ */
+
+let rngCalls = 0;
+
+function randInt(n) {
+  rngCalls++;
+  const limit = Math.floor(0xFFFFFFFF / n) * n;
+  const buf = new Uint32Array(1);
+  let v;
+  do { crypto.getRandomValues(buf); v = buf[0]; } while (v >= limit);
+  return v % n;
+}
+
+function freshShuffledDeck() {
+  const d = new Array(52);
+  for (let i = 0; i < 52; i++) d[i] = i;
+  for (let i = 51; i > 0; i--) {         // Fisher-Yates, back to front
+    const j = randInt(i + 1);
+    const t = d[i]; d[i] = d[j]; d[j] = t;
+  }
+  return d;
+}
+
+/* ===========================================================================
+   HAND EVALUATION  (identical logic to enumerate.js)
+   Straight beats flush in Three Card Poker.
+   =========================================================================== */
+
+const CAT = {
+  HIGH: 0, PAIR: 1, FLUSH: 2, STRAIGHT: 3, TRIPS: 4, SF: 5,
+};
+const CAT_NAME = ['High card','Pair','Flush','Straight','Three of a kind','Straight flush'];
+const CAT_KEY  = ['high','pair','flush','straight','trips','straightFlush'];
+
+function eval3(a, b, c) {
+  let r0 = rankOf(a), r1 = rankOf(b), r2 = rankOf(c), t;
+  if (r0 < r1) { t = r0; r0 = r1; r1 = t; }
+  if (r1 < r2) { t = r1; r1 = r2; r2 = t; }
+  if (r0 < r1) { t = r0; r0 = r1; r1 = t; }
+
+  const flush = suitOf(a) === suitOf(b) && suitOf(b) === suitOf(c);
+
+  let straight = false, sHigh = r0;
+  if (r0 === r1 + 1 && r1 === r2 + 1) straight = true;
+  else if (r0 === 12 && r1 === 1 && r2 === 0) { straight = true; sHigh = 1; }  // A-2-3 wheel
+
+  let cat, tie;
+  if (straight && flush)            { cat = CAT.SF;       tie = sHigh; }
+  else if (r0 === r1 && r1 === r2)  { cat = CAT.TRIPS;    tie = r0; }
+  else if (straight)                { cat = CAT.STRAIGHT; tie = sHigh; }
+  else if (flush)                   { cat = CAT.FLUSH;    tie = (r0<<10)|(r1<<5)|r2; }
+  else if (r0 === r1 || r1 === r2)  {
+    cat = CAT.PAIR;
+    const pr = (r0 === r1) ? r0 : r1;
+    const kk = (r0 === r1) ? r2 : r0;
+    tie = (pr << 5) | kk;
+  }
+  else                              { cat = CAT.HIGH;     tie = (r0<<10)|(r1<<5)|r2; }
+
+  return { value: (cat << 20) | tie, cat, name: CAT_NAME[cat] };
+}
+
+// Q-6-4 offsuit, the standard play/fold threshold
+const Q64 = eval3(10, 13 + 4, 26 + 2).value;
+// Dealer qualifies on Q-high any kicker; lowest qualifier is Q-3-2
+const QUALIFY = eval3(10, 13 + 1, 26 + 0).value;
+
+/* ---------- five-of-six evaluation for the Six Card Bonus --------------- */
+
+const CAT5_NAME = ['Nothing','Pair','Two pair','Three of a kind','Straight',
+                   'Flush','Full house','Four of a kind','Straight flush','Royal flush'];
+const CAT5_KEY  = [null,null,null,'trips','straight','flush','fullHouse',
+                   'quads','straightFlush','royalFlush'];
+
+function bestStraight(mask) {
+  const WHEEL = (1<<12)|(1<<3)|(1<<2)|(1<<1)|1;
+  for (let hi = 12; hi >= 4; hi--) {
+    const need = (1<<hi)|(1<<(hi-1))|(1<<(hi-2))|(1<<(hi-3))|(1<<(hi-4));
+    if ((mask & need) === need) return hi;
+  }
+  return (mask & WHEEL) === WHEEL ? 3 : -1;
+}
+
+function categorize6(cards) {
+  const rc = new Int32Array(13), sm = new Int32Array(4), sc = new Int32Array(4);
+  let mask = 0;
+  for (const c of cards) {
+    const r = rankOf(c), s = suitOf(c);
+    rc[r]++; sm[s] |= (1 << r); sc[s]++; mask |= (1 << r);
+  }
+  for (let s = 0; s < 4; s++) {
+    if (sc[s] >= 5) {
+      const sf = bestStraight(sm[s]);
+      if (sf === 12) return 9;
+      if (sf >= 0) return 8;
+      return 5;
+    }
+  }
+  let trips = 0, pairs = 0, quads = 0;
+  for (let r = 0; r < 13; r++) {
+    if (rc[r] === 4) quads++; else if (rc[r] === 3) trips++; else if (rc[r] === 2) pairs++;
+  }
+  if (quads) return 7;
+  if (trips >= 2 || (trips === 1 && pairs >= 1)) return 6;
+  if (bestStraight(mask) >= 0) return 4;
+  if (trips === 1) return 3;
+  if (pairs >= 2) return 2;
+  if (pairs === 1) return 1;
+  return 0;
+}
+
+/* ===========================================================================
+   PERSISTENT STATE
+   =========================================================================== */
+
+const SAVE_KEY = 'tcp.save.v1';
+
+const blankState = () => ({
+  chips: RULES.startingChips,
+  lastBonus: 0,
+  bets: { ante: 10, pp: 5, scb: 5 },
+  stats: {
+    hands: 0,
+    wagered: 0,
+    net: 0,
+    folds: 0,
+    dealerQualified: 0,
+    dealerNotQualified: 0,
+    catCounts: [0,0,0,0,0,0],   // player 3-card categories
+  },
+  history: [],                   // capped; full detail for CSV export
+});
+
+let S = load();
+
+function load() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (raw) return Object.assign(blankState(), JSON.parse(raw));
+  } catch (e) { /* storage blocked or corrupt; fall through */ }
+  return blankState();
+}
+
+function save() {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); }
+  catch (e) { /* private mode; game still works, just won't persist */ }
+}
+
+/* ===========================================================================
+   EXACT REFERENCE DISTRIBUTION  (computed in-page, not hardcoded)
+   =========================================================================== */
+
+const EXACT = (() => {
+  const counts = [0,0,0,0,0,0];
+  for (let a = 0; a < 50; a++)
+    for (let b = a + 1; b < 51; b++)
+      for (let c = b + 1; c < 52; c++)
+        counts[eval3(a, b, c).cat]++;
+  const total = 22100;
+  return { counts, total, p: counts.map(n => n / total) };
+})();
+
+/* ===========================================================================
+   GAME STATE (per hand)
+   =========================================================================== */
+
+let deck = [], player = [], dealer = [], phase = 'betting';
+let pEval = null, dEval = null;
+
+/* ---------- DOM helpers ------------------------------------------------- */
+const $ = id => document.getElementById(id);
+
+function cardEl(c, faceDown) {
+  const d = document.createElement('div');
+  if (faceDown) { d.className = 'card back'; return d; }
+  const s = suitOf(c);
+  d.className = 'card' + (s === 1 || s === 2 ? ' red' : '');
+  d.innerHTML = `<div class="r">${RANKS[rankOf(c)]}</div><div class="s">${SUITS[s]}</div>`;
+  return d;
+}
+
+function renderCards(el, cards, faceDown) {
+  el.innerHTML = '';
+  if (!cards.length) {
+    for (let i = 0; i < 3; i++) {
+      const e = document.createElement('div'); e.className = 'card empty'; el.appendChild(e);
+    }
+    return;
+  }
+  cards.forEach(c => el.appendChild(cardEl(c, faceDown && !$('peek').checked)));
+}
+
+function renderBank() { $('bank').textContent = S.chips.toLocaleString(); }
+
+function renderBets() {
+  for (const k of ['ante','pp','scb']) {
+    $('bet-' + k).textContent = S.bets[k];
+    $('box-' + k).classList.toggle('active', S.bets[k] > 0);
+  }
+}
+
+function clearResults() {
+  for (const k of ['ante','pp','scb']) {
+    $('res-' + k).textContent = '';
+    $('res-' + k).className = 'res';
+  }
+}
+
+function setResult(k, text, cls) {
+  $('res-' + k).textContent = text;
+  $('res-' + k).className = 'res ' + cls;
+}
+
+/* ===========================================================================
+   DEAL
+   =========================================================================== */
+
+function totalStake() {
+  return S.bets.ante + S.bets.pp + S.bets.scb;
+}
+
+function deal() {
+  const stake = totalStake();
+  if (stake === 0) { $('msg').textContent = 'Place at least one bet.'; return; }
+  if (S.chips < stake) { $('msg').textContent = 'Not enough chips.'; return; }
+
+  deck = freshShuffledDeck();
+  player = [deck.pop(), deck.pop(), deck.pop()];
+  dealer = [deck.pop(), deck.pop(), deck.pop()];
+  pEval = eval3(...player);
+  dEval = eval3(...dealer);
+
+  S.chips -= stake;
+  clearResults();
+  renderBank();
+  renderCards($('playerCards'), player, false);
+  renderCards($('dealerCards'), dealer, true);
+  $('playerHand').textContent = pEval.name;
+  $('dealerHand').textContent = '';
+
+  if (S.bets.ante > 0) {
+    phase = 'decision';
+    $('btnDeal').disabled = true;
+    $('btnPlay').disabled = S.chips < S.bets.ante;
+    $('btnFold').disabled = false;
+    $('msg').textContent = 'Play or fold?';
+    const should = pEval.value >= Q64;
+    $('hint').textContent = `Strategy: ${should ? 'play' : 'fold'} (threshold is Q-6-4)` +
+      (S.chips < S.bets.ante ? ' — not enough chips to raise, you must fold.' : '');
+  } else {
+    // side bets only; no decision to make
+    resolve(false);
+  }
+  save();
+}
+
+/* ===========================================================================
+   RESOLVE
+   =========================================================================== */
+
+function resolve(raised) {
+  phase = 'done';
+  renderCards($('dealerCards'), dealer, false);
+
+  const qualified = dEval.value >= QUALIFY;
+  $('dealerHand').innerHTML = dEval.name +
+    `<span class="tag ${qualified ? 'q' : 'nq'}">${qualified ? 'qualifies' : 'does not qualify'}</span>`;
+
+  const stake = S.bets.ante + S.bets.pp + S.bets.scb + (raised ? S.bets.ante : 0);
+  let returned = 0;                 // chips handed back (stake + winnings)
+  const lines = [];
+
+  /* ---- Pair Plus ---- */
+  if (S.bets.pp > 0) {
+    const pay = RULES.pairPlus[CAT_KEY[pEval.cat]] || 0;
+    if (pay) {
+      const w = S.bets.pp * pay;
+      returned += S.bets.pp + w;
+      setResult('pp', `+${w}`, 'win');
+      lines.push(`PP ${pay}:1 +${w}`);
+    } else {
+      setResult('pp', `-${S.bets.pp}`, 'lost');
+    }
+  }
+
+  /* ---- Six Card Bonus ---- */
+  let scbCat = null;
+  if (S.bets.scb > 0) {
+    scbCat = categorize6([...player, ...dealer]);
+    const key = CAT5_KEY[scbCat];
+    const pay = key ? (RULES.sixCard[key] || 0) : 0;
+    if (pay) {
+      const w = S.bets.scb * pay;
+      returned += S.bets.scb + w;
+      setResult('scb', `+${w}`, 'win');
+      lines.push(`6CB ${CAT5_NAME[scbCat]} +${w}`);
+    } else {
+      setResult('scb', `-${S.bets.scb}`, 'lost');
+    }
+  }
+
+  /* ---- Ante / Play ---- */
+  let outcome = 'n/a';
+  if (S.bets.ante > 0) {
+    const a = S.bets.ante;
+    const bonusPay = RULES.anteBonus[CAT_KEY[pEval.cat]] || 0;
+    const bonus = bonusPay * a;
+    if (bonus) { returned += bonus; lines.push(`Ante bonus ${bonusPay}:1 +${bonus}`); }
+
+    if (!raised) {
+      outcome = 'fold';
+      setResult('ante', `-${a}`, 'lost');
+      S.stats.folds++;
+    } else if (!qualified) {
+      outcome = 'no-qualify';
+      returned += a + a      // ante stake + ante win
+                + a;         // play bet pushes, returned
+      setResult('ante', `+${a}`, 'win');
+      lines.push(`Dealer no qualify: ante +${a}, play pushes`);
+    } else if (pEval.value > dEval.value) {
+      outcome = 'win';
+      returned += (a + a) + (a + a);
+      setResult('ante', `+${a * 2}`, 'win');
+      lines.push(`Beat dealer +${a * 2}`);
+    } else if (pEval.value === dEval.value) {
+      outcome = 'push';
+      returned += a + a;
+      setResult('ante', '0', 'pushc');
+      lines.push('Tie, both push');
+    } else {
+      outcome = 'lose';
+      setResult('ante', `-${a * 2}`, 'lost');
+      lines.push(`Lost to dealer -${a * 2}`);
+    }
+
+    if (qualified) S.stats.dealerQualified++; else S.stats.dealerNotQualified++;
+  }
+
+  S.chips += returned;
+  const net = returned - stake;
+
+  /* ---- bookkeeping ---- */
+  S.stats.hands++;
+  S.stats.wagered += stake;
+  S.stats.net += net;
+  S.stats.catCounts[pEval.cat]++;
+
+  S.history.push({
+    n: S.stats.hands,
+    t: Date.now(),
+    player: player.join(','),
+    dealer: dealer.join(','),
+    pCat: pEval.cat,
+    pHand: pEval.name,
+    dCat: dEval.cat,
+    dHand: dEval.name,
+    qualified,
+    raised,
+    outcome,
+    scbCat,
+    betAnte: S.bets.ante, betPP: S.bets.pp, betSCB: S.bets.scb,
+    staked: stake,
+    net,
+  });
+  if (S.history.length > 5000) S.history.splice(0, S.history.length - 5000);
+
+  $('msg').innerHTML = (lines.length ? lines.join(' &nbsp;|&nbsp; ') : 'No action.') +
+    `<br><strong class="${net > 0 ? 'win' : net < 0 ? 'lost' : 'pushc'}">` +
+    `Net ${net >= 0 ? '+' : ''}${net}</strong>`;
+  $('hint').textContent = '';
+
+  /* ---- broke floor ---- */
+  if (S.chips < RULES.minBet) {
+    S.chips += RULES.brokeFloor;
+    $('msg').innerHTML += `<br><span class="pushc">Busted. Staked you ${RULES.brokeFloor} ` +
+      `to keep going — lowest table only.</span>`;
+  }
+
+  renderBank();
+  renderStats();
+  renderLog();
+  save();
+
+  $('btnDeal').disabled = false;
+  $('btnPlay').disabled = true;
+  $('btnFold').disabled = true;
+  phase = 'betting';
+}
+
+/* ===========================================================================
+   STATS PANEL — observed vs. exact
+   =========================================================================== */
+
+function renderStats() {
+  const st = S.stats;
+  const rows = [];
+  const pct = x => (x * 100).toFixed(2) + '%';
+
+  rows.push(`<tr class="stat-row"><td>Hands played</td><td>${st.hands}</td></tr>`);
+  rows.push(`<tr class="stat-row"><td>Total wagered</td><td>${st.wagered.toLocaleString()}</td></tr>`);
+  rows.push(`<tr class="stat-row"><td>Net</td><td class="${st.net>0?'win':st.net<0?'lost':''}">${st.net>=0?'+':''}${st.net.toLocaleString()}</td></tr>`);
+
+  if (st.wagered > 0) {
+    const rtp = (st.wagered + st.net) / st.wagered;
+    rows.push(`<tr class="stat-row"><td>Observed RTP</td><td>${pct(rtp)}</td></tr>`);
+  }
+  if (st.hands > 0) {
+    rows.push(`<tr class="stat-row"><td>Fold rate</td><td>${pct(st.folds / st.hands)} <span style="color:#667">vs 32.58%</span></td></tr>`);
+  }
+  const dq = st.dealerQualified + st.dealerNotQualified;
+  if (dq > 0) {
+    rows.push(`<tr class="stat-row"><td>Dealer qualified</td><td>${pct(st.dealerQualified / dq)} <span style="color:#667">vs 68.86%</span></td></tr>`);
+  }
+
+  rows.push('<tr><td colspan="2" style="padding-top:8px;color:#667;font-size:11px;text-transform:uppercase;letter-spacing:.08em">Your hand frequencies</td></tr>');
+  for (let i = 5; i >= 0; i--) {
+    const obs = st.hands ? st.catCounts[i] / st.hands : 0;
+    rows.push(
+      `<tr class="stat-row"><td>${CAT_NAME[i]}</td>` +
+      `<td>${st.catCounts[i]} &nbsp; ${pct(obs)} <span style="color:#667">vs ${pct(EXACT.p[i])}</span></td></tr>`
+    );
+  }
+  $('stats').innerHTML = rows.join('');
+}
+
+function renderLog() {
+  const recent = S.history.slice(-40).reverse();
+  $('log').innerHTML = recent.map(h =>
+    `<div>#${h.n} ${h.pHand} vs ${h.dHand} ` +
+    `<span class="${h.net>0?'win':h.net<0?'lost':'pushc'}">${h.net>=0?'+':''}${h.net}</span></div>`
+  ).join('') || '<div style="color:#556">No hands yet.</div>';
+}
+
+function renderPaytables() {
+  const r = [];
+  r.push('<tr><td colspan="2" style="color:#667;font-size:11px;text-transform:uppercase;letter-spacing:.08em;padding-bottom:4px">Pair Plus</td></tr>');
+  for (let i = 5; i >= 1; i--) {
+    const p = RULES.pairPlus[CAT_KEY[i]];
+    if (p) r.push(`<tr class="stat-row"><td>${CAT_NAME[i]}</td><td>${p}:1</td></tr>`);
+  }
+  r.push('<tr><td colspan="2" style="padding-top:8px;color:#667;font-size:11px;text-transform:uppercase;letter-spacing:.08em">Ante Bonus</td></tr>');
+  for (let i = 5; i >= 1; i--) {
+    const p = RULES.anteBonus[CAT_KEY[i]];
+    if (p) r.push(`<tr class="stat-row"><td>${CAT_NAME[i]}</td><td>${p}:1</td></tr>`);
+  }
+  $('ppTable').innerHTML = r.join('');
+
+  const s = ['<tr><td colspan="2" style="color:#667;font-size:11px;text-transform:uppercase;letter-spacing:.08em;padding-bottom:4px">6 Card Bonus</td></tr>'];
+  for (let i = 9; i >= 3; i--) {
+    const k = CAT5_KEY[i]; if (!k) continue;
+    const p = RULES.sixCard[k];
+    if (p) s.push(`<tr class="stat-row"><td>${CAT5_NAME[i]}</td><td>${p}:1</td></tr>`);
+  }
+  s.push('<tr><td colspan="2" style="padding-top:8px;color:#667;font-size:11px">Exact house edges: ante 3.3730%, Pair Plus 7.2760%, 6CB 8.5614%</td></tr>');
+  $('scbTable').innerHTML = s.join('');
+}
+
+/* ===========================================================================
+   ADMIN CONSOLE
+   =========================================================================== */
+
+let adminUnlocked = false;
+const out = txt => { $('adminOut').textContent = txt; };
+
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a') {
+    e.preventDefault();
+    $('admin').classList.toggle('open');
+  }
+  if (e.key === 'Escape') $('admin').classList.remove('open');
+});
+
+$('adminClose').onclick = () => $('admin').classList.remove('open');
+
+$('adminUnlock').onclick = () => {
+  if ($('adminPass').value === RULES.adminPass) {
+    adminUnlocked = true;
+    $('adminGate').style.display = 'none';
+    $('adminPanel').style.display = 'block';
+    out('Unlocked.');
+  } else {
+    out('Wrong passphrase.');
+  }
+};
+$('adminPass').addEventListener('keydown', e => { if (e.key === 'Enter') $('adminUnlock').click(); });
+
+$('btnSetChips').onclick = () => {
+  const v = parseInt($('setChips').value, 10);
+  if (!isNaN(v) && v >= 0) { S.chips = v; renderBank(); save(); out(`Chips set to ${v}.`); }
+};
+$('btnAddChips').onclick = () => { S.chips += 1000; renderBank(); save(); out('+1000 chips.'); };
+
+$('btnEnum').onclick = () => {
+  const lines = ['Exact enumeration of all C(52,3) = 22,100 hands', ''];
+  lines.push('Hand'.padEnd(18) + 'Count'.padStart(8) + 'Probability'.padStart(14));
+  lines.push('-'.repeat(40));
+  for (let i = 5; i >= 0; i--) {
+    lines.push(
+      CAT_NAME[i].padEnd(18) +
+      String(EXACT.counts[i]).padStart(8) +
+      (EXACT.p[i] * 100).toFixed(6).padStart(13) + '%'
+    );
+  }
+  lines.push('-'.repeat(40));
+  lines.push('TOTAL'.padEnd(18) + String(EXACT.total).padStart(8));
+  lines.push('', 'Computed in this page just now, from the same eval3()');
+  lines.push('the game deals with. Not a hardcoded table.');
+  out(lines.join('\n'));
+};
+
+$('btnChi').onclick = () => {
+  const st = S.stats, n = st.hands;
+  if (n < 30) { out(`Only ${n} hands logged. Need a few hundred for this to mean anything.`); return; }
+
+  let chi = 0, df = 0;
+  const lines = ['Chi-square goodness of fit: your hands vs. exact distribution', ''];
+  lines.push('Hand'.padEnd(18) + 'Obs'.padStart(7) + 'Exp'.padStart(10) + 'Contrib'.padStart(10));
+  lines.push('-'.repeat(45));
+
+  for (let i = 0; i < 6; i++) {
+    const exp = EXACT.p[i] * n;
+    const obs = st.catCounts[i];
+    if (exp < 5) {
+      lines.push(CAT_NAME[i].padEnd(18) + String(obs).padStart(7) + exp.toFixed(2).padStart(10) + '  (pooled)');
+      continue;
+    }
+    const contrib = Math.pow(obs - exp, 2) / exp;
+    chi += contrib; df++;
+    lines.push(
+      CAT_NAME[i].padEnd(18) + String(obs).padStart(7) +
+      exp.toFixed(2).padStart(10) + contrib.toFixed(4).padStart(10)
+    );
+  }
+  df = Math.max(df - 1, 1);
+
+  // 95% critical values for df 1..5
+  const crit = { 1: 3.841, 2: 5.991, 3: 7.815, 4: 9.488, 5: 11.070 };
+  const cv = crit[df] || 11.070;
+
+  lines.push('-'.repeat(45));
+  lines.push('');
+  lines.push(`chi-square = ${chi.toFixed(4)}   df = ${df}`);
+  lines.push(`critical value at alpha=0.05: ${cv}`);
+  lines.push('');
+  lines.push(chi > cv
+    ? 'EXCEEDS critical value. At this sample size that still happens'
+    : 'Below critical value. No evidence the deal deviates from fair.');
+  lines.push(chi > cv
+    ? '1 time in 20 by chance alone. Collect more hands before concluding.'
+    : 'Categories with expected count under 5 are excluded (Cochran\'s rule).');
+  out(lines.join('\n'));
+};
+
+$('btnMonte').onclick = () => {
+  const N = 200000;
+  const counts = [0,0,0,0,0,0];
+  const t0 = performance.now();
+  for (let i = 0; i < N; i++) {
+    const d = freshShuffledDeck();
+    counts[eval3(d[0], d[1], d[2]).cat]++;
+  }
+  const ms = performance.now() - t0;
+
+  const lines = [`Monte Carlo: ${N.toLocaleString()} deals through the live shuffler`, ''];
+  lines.push('Hand'.padEnd(18) + 'Observed'.padStart(11) + 'Exact'.padStart(11) + 'Delta'.padStart(10));
+  lines.push('-'.repeat(50));
+  let chi = 0;
+  for (let i = 5; i >= 0; i--) {
+    const obs = counts[i] / N, exp = EXACT.p[i];
+    chi += Math.pow(counts[i] - exp * N, 2) / (exp * N);
+    lines.push(
+      CAT_NAME[i].padEnd(18) +
+      (obs * 100).toFixed(4).padStart(10) + '%' +
+      (exp * 100).toFixed(4).padStart(10) + '%' +
+      ((obs - exp) * 100).toFixed(4).padStart(10)
+    );
+  }
+  lines.push('-'.repeat(50));
+  lines.push('');
+  lines.push(`chi-square = ${chi.toFixed(4)}  df = 5  critical = 11.070`);
+  lines.push(chi > 11.070 ? 'FAILS at alpha=0.05 — investigate the shuffler.'
+                          : 'PASSES. The shuffler matches the exact distribution.');
+  lines.push(`${ms.toFixed(0)} ms, ${rngCalls.toLocaleString()} RNG draws total this session.`);
+  out(lines.join('\n'));
+};
+
+$('btnCsv').onclick = () => {
+  if (!S.history.length) { out('No hands to export.'); return; }
+  const cols = ['n','t','player','dealer','pCat','pHand','dCat','dHand',
+                'qualified','raised','outcome','scbCat','betAnte','betPP','betSCB','staked','net'];
+  const rows = [cols.join(',')];
+  for (const h of S.history) {
+    rows.push(cols.map(c => {
+      const v = h[c];
+      return (typeof v === 'string' && v.includes(',')) ? `"${v}"` : v;
+    }).join(','));
+  }
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `tcp-hands-${Date.now()}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  out(`Exported ${S.history.length} hands.\n\nColumns: ${cols.join(', ')}\n\n` +
+      'pCat 0-5 = high card, pair, flush, straight, trips, straight flush.\n' +
+      'Drop this into R, Python or a spreadsheet and test it properly.');
+};
+
+$('btnJson').onclick = () => out(JSON.stringify({ chips: S.chips, stats: S.stats }, null, 2));
+
+$('btnReset').onclick = () => {
+  if (!confirm('Wipe chips, stats and full hand history?')) return;
+  S = blankState();
+  save();
+  renderBank(); renderStats(); renderLog();
+  out('Reset to a fresh state.');
+};
+
+/* ===========================================================================
+   WIRING
+   =========================================================================== */
+
+document.querySelectorAll('.betbox button').forEach(b => {
+  b.onclick = () => {
+    if (phase !== 'betting') return;
+    const k = b.dataset.bet, d = parseInt(b.dataset.d, 10);
+    S.bets[k] = Math.max(0, S.bets[k] + d);
+    renderBets(); save();
+  };
+});
+
+$('btnDeal').onclick = deal;
+$('btnPlay').onclick = () => {
+  if (phase !== 'decision') return;
+  S.chips -= S.bets.ante;
+  renderBank();
+  resolve(true);
+};
+$('btnFold').onclick = () => { if (phase === 'decision') resolve(false); };
+
+/* ---------- daily bonus ---------- */
+(function dailyBonus() {
+  const now = Date.now();
+  if (now - S.lastBonus >= RULES.dailyCooldownMs) {
+    S.chips += RULES.dailyBonus;
+    S.lastBonus = now;
+    save();
+    setTimeout(() => {
+      $('msg').innerHTML = `<span class="win">Timed bonus: +${RULES.dailyBonus} chips.</span> ` +
+        `Next one in ${(RULES.dailyCooldownMs / 3600000)}h. Place your bets.`;
+    }, 400);
+  }
+})();
+
+/* ---------- boot ---------- */
+renderBank();
+renderBets();
+renderCards($('playerCards'), [], false);
+renderCards($('dealerCards'), [], false);
+renderStats();
+renderLog();
+renderPaytables();
+</script>
+</body>
+</html>
