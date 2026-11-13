@@ -6,8 +6,8 @@ Context for Claude Code working in this repo.
 
 A play-chip casino game (no real money, ever) built so that its odds are
 verifiable rather than trusted. Three Card Poker, Blackjack and Free Bet
-Blackjack (with 21+3 and Perfect Pairs side bets) are done. Economy sinks,
-Supabase, and slots are planned.
+Blackjack (with 21+3 and Perfect Pairs side bets) are done, along with the
+economy (`economy.js`). Supabase (accounts) and slots are planned.
 
 The origin of the project: social casino apps are unregulated and have every
 incentive to tune their RNG toward chip sales. The response is a game that
@@ -44,8 +44,8 @@ openable as a bare file.
 
 ## Hard rules
 
-1. **No change to a paytable or game rule ships without re-running both
-   scripts.** Paste the new house edge in the commit message.
+1. **No change to a paytable or game rule ships without re-running that
+   game's scripts (see Commands).** Paste the new house edge in the commit message.
 2. **Never tune odds based on player behavior, spend, or session history.** The
    entire premise of this project is that the deal is indifferent to who you
    are. Any "dynamic difficulty," comeback mechanic, or loss-streak
@@ -70,13 +70,7 @@ openable as a bare file.
 
 ## Architecture notes
 
-- Cards are integers 0-51. `rank = c % 13` (0=Two, 12=Ace), `suit = (c/13)|0`.
-- Hand strength is a single packed int: `(category << 20) | tiebreak`. Larger
-  always wins. Lets comparison be a single `>`.
 - **Straight beats flush** in Three Card Poker. Easy to get wrong.
-- Shuffle is Fisher-Yates over `crypto.getRandomValues` with rejection sampling
-  to avoid modulo bias.
-- All tunables live in the `RULES` object at the top of the script block.
 - State persists to `localStorage` under `tcp.save.v1`. Bump the version string
   on any breaking shape change.
 
