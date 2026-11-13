@@ -83,6 +83,7 @@ const sandbox = {
   },
   BJ,   // index.html gets this from <script src="blackjack-core.js">
   ECON: require('./economy.js'),
+  TABLE_RULES: require('./tables.js'),   // index.html gets this from <script src="tables.js">
 };
 sandbox.globalThis = sandbox;
 
@@ -91,6 +92,10 @@ const m = html.match(/<script>([\s\S]*?)<\/script>/);
 if (!m) { console.error('No inline <script> block found in index.html'); process.exit(1); }
 if (!/<script src="blackjack-core\.js"><\/script>/.test(html)) {
   console.error('index.html does not load blackjack-core.js; the test would not reflect the game.');
+  process.exit(1);
+}
+if (!/<script src="tables\.js"><\/script>/.test(html)) {
+  console.error('index.html does not load tables.js; the test would not reflect the table rules in play.');
   process.exit(1);
 }
 vm.createContext(sandbox);

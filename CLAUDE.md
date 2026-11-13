@@ -100,8 +100,10 @@ moves chips and renders.
   `round.returned` is paid once, from `settle()`, the only place payouts are
   computed. `test-blackjack-payouts.js` checks bankroll delta equals tracked
   net through the real page code. MISMATCH there means stop and fix it.
-- **Rules** live in `RULES.blackjack` and `RULES.freeBet` (keys =
-  `DEFAULT_RULES` in the core). `makeRules()` rejects any rule set that could
+- **Rules** live in `tables.js` (`TABLE_RULES.blackjack`, `.freeBet`, and
+  their house edges), the one copy shared by the page (`RULES.blackjack` etc.
+  just point at it), the Node harnesses, and the Stage 2 server. Edit them
+  there, never in `index.html`. Keys = `DEFAULT_RULES` in the core. `makeRules()` rejects any rule set that could
   ever owe a fractional chip. Both tables run on the same engine and the same
   page controller (`BJ_TABLES`, state in `S.bj` / `S.fb`). Variants are rule
   keys, never forks.
@@ -110,7 +112,7 @@ moves chips and renders.
   chips, never counted). Win pays `bet + (bet + free)`; push returns `bet`;
   loss returns 0. Basic strategy has a separate Free Bet chart with
   real-hand and free-hand variants (a push is as bad as a loss on a free hand).
-- **Displayed house edges** (`RULES.bjHouseEdge`, `RULES.fbHouseEdge`) are checked by the payout
+- **Displayed house edges** (`bjHouseEdge`, `fbHouseEdge` in `tables.js`) are checked by the payout
   harness, which fails if the page shows a number the simulation disagrees
   with. Change a rule, re-measure, update the number.
 - `isNatural(cards, fromSplit)` and `dealerShouldHit(cards, rules)` throw if the

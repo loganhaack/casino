@@ -847,6 +847,8 @@
 <!-- Shared blackjack logic: one copy, also loaded by the Node tests.
      A classic script (not a module), so this still works from file://. -->
 <script src="blackjack-core.js"></script>
+<!-- Blackjack / Free Bet table rules: one copy, shared with the tests and the server. -->
+<script src="tables.js"></script>
 <!-- Economy (ranks, wheels, quests, events, shop). Grants chips only; never
      touches game odds. Also loaded by the Node tests. -->
 <script src="economy.js"></script>
@@ -872,40 +874,16 @@ const RULES = {
     quads: 100, straightFlush: 200, royalFlush: 1000,
   },
 
-  // Blackjack table. Keys are the engine's rule keys (blackjack-core.js,
-  // DEFAULT_RULES). Change any of these and you must re-run
-  //   node enumerate-blackjack.js && node test-blackjack-payouts.js
-  // and update bjHouseEdge below with the new measured figure; the payout
-  // harness fails if the displayed edge disagrees with what it measures.
-  blackjack: {
-    decks: 6, penetration: 0.75, hitSoft17: false, blackjackPays: [3, 2],
-    insurance: true, doubleOn: 'any', doubleAfterSplit: true, maxHands: 4,
-    resplitAces: false, hitSplitAces: false, betUnit: 2,
-    // Side bets (pays N to 1). The exact house edge for these paytables is
-    // enumerated in-page and by enumerate-blackjack.js; see the rules panel.
-    perfectPairs:   { perfect: 25, colored: 12, mixed: 6 },                                   // Wizard Table A
-    twentyOnePlus3: { suitedTrips: 100, straightFlush: 40, trips: 30, straight: 10, flush: 5 }, // Wizard Version 7
-  },
-  bjMinBet: 10,
-  bjBetStep: 10,
-  // Basic-strategy house edge per initial bet. Pooled over 150M simulated
-  // rounds in five runs: ~0.43% (a published simulation gives 0.44%). The
-  // payout harness fails if this drifts more than 4 SE from what it measures.
-  bjHouseEdge: 0.0043,
-
-  // Free Bet Blackjack: Wizard of Odds' standard rules (6 decks, H17, resplit
-  // Aces, free doubles on hard 9-11, free splits except tens, dealer 22
-  // pushes). Same re-measure rule as above.
-  freeBet: {
-    decks: 6, penetration: 0.75, hitSoft17: true, blackjackPays: [3, 2],
-    insurance: true, doubleOn: 'any', doubleAfterSplit: true, maxHands: 4,
-    resplitAces: true, hitSplitAces: false, betUnit: 2,
-    push22: true, freeDoubles: true, freeSplits: true,
-    perfectPairs:   { perfect: 25, colored: 12, mixed: 6 },
-    twentyOnePlus3: { suitedTrips: 100, straightFlush: 40, trips: 30, straight: 10, flush: 5 },
-  },
-  // Pooled over 120M simulated rounds in two runs: ~1.04%. Wizard of Odds: 1.04%.
-  fbHouseEdge: 0.0104,
+  // Blackjack and Free Bet rules and their measured house edges live in
+  // tables.js (one copy, shared with the tests and the Stage 2 server).
+  // Change them THERE, then re-run enumerate-blackjack.js and
+  // test-blackjack-payouts.js and update the edge figures.
+  blackjack:   TABLE_RULES.blackjack,
+  freeBet:     TABLE_RULES.freeBet,
+  bjHouseEdge: TABLE_RULES.bjHouseEdge,
+  fbHouseEdge: TABLE_RULES.fbHouseEdge,
+  bjMinBet:    TABLE_RULES.bjMinBet,
+  bjBetStep:   TABLE_RULES.bjBetStep,
 
   minBet: 5,
   startingChips: 1000,

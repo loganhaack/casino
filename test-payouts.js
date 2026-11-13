@@ -67,6 +67,7 @@ const sandbox = {
 // index.html loads blackjack-core.js via <script src>; provide the same file.
 sandbox.BJ = require('./blackjack-core.js');
 sandbox.ECON = require('./economy.js');
+sandbox.TABLE_RULES = require('./tables.js');
 sandbox.globalThis = sandbox;
 
 // ---------------------------------------------------------------------------

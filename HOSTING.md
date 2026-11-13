@@ -131,7 +131,20 @@ the settled result from the server instead of computing it.
 - [x] Step 1: magic-link sign-in and profiles (name + avatar) on the Home tab.
       Schema: `supabase/migrations/20261113000001_profiles.sql`. Anonymous
       access verified refused.
+- [x] Table rules moved into `tables.js`, one copy the page, the tests and
+      the server all load.
 - [ ] Step 2: server-side balances, ledger, and blackjack dealing.
+      **Decided:** fresh online start. Signed in = a server wallet starting at
+      1,000 chips, with rank, quests, wheels and vault on the server too.
+      Signed out = the offline game, unchanged. Local chips are not imported
+      (they can't be trusted for a leaderboard).
+      **Needs from you first:** run `npx supabase login` once (it opens a
+      browser), so Edge Functions can be deployed from this machine.
+      **Plan:** copy `blackjack-core.js`, `tables.js`, `economy.js` into
+      `supabase/functions/_shared/` with a test that fails if they ever
+      differ from the originals; a migration for wallets + ledger + per-table
+      server state (the shoe never leaves the server), written only through
+      one database function so a bet and its ledger entry are atomic.
 
 ### Getting started (reference)
 

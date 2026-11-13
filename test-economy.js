@@ -284,7 +284,7 @@ function loadPage({ store, clock, crypto }) {
       getElementById: id => { if (!els.has(id)) els.set(id, makeEl(id)); return els.get(id); },
       querySelectorAll: () => [], createElement: () => makeEl('tmp'), addEventListener: () => {},
     },
-    BJ, ECON,
+    BJ, ECON, TABLE_RULES: require('./tables.js'),
   };
   sb.globalThis = sb;
   vm.createContext(sb);
