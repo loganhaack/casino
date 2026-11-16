@@ -298,10 +298,28 @@ which is a no-op without audio (Node harnesses). `bigHit()` is the
 full-screen popup (jackpots, slot wins of 25x+, table wins of 15x+). Both are
 presentation only and run after a result is settled; nothing reads them.
 
+## Players: leaderboard and profiles (online)
+
+- The `leaderboard` op returns every online player as a public card: display
+  name, avatar, level/tier, title, equipped cosmetics, worth (chips + vault),
+  this week's game net (bet + payout rows since Monday 00:00 ET,
+  `ECON.weekStart`), best single round (bet + payout grouped by ref; a
+  jackpot is its own ref) and jackpots. Computed by the SQL function
+  `leaderboard()` (migration `20261117000001_leaderboard.sql`) from tables
+  only the server writes. Never a user id; `mine` marks the caller.
+  Without the migration the board is null and the page says so.
+- Grants (wheels, quests, promos, interest) and the shop are not "winnings":
+  the weekly board counts game results only.
+- Avatar frames are a shop cosmetic kind (`frame`, style solid/glow/spin),
+  drawn by `avatarHTML()`. Same rules as every cosmetic: flat prices for
+  everyone, nothing that affects play. New cosmetic kinds go in
+  `blankEcon().equipped`; `normalizeEcon` (and the page's load) backfill
+  them and their free default into old accounts.
+
 ## Next up
 
-The leaderboard (HOSTING.md, Stage 2 step 4): every game now deals and
-settles on the server, which is what makes a leaderboard mean anything.
+The roadmap is done (see README). Ideas the owner hasn't decided on yet:
+weekly tournaments with prizes, friend lists, more slot machines.
 
 Edge checks in both payout harnesses fail only beyond 4 standard errors
 (about 1 run in 16,000 for a correct game). If one fails, re-run once; if it

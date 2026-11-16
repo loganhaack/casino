@@ -65,14 +65,15 @@ const clone = (x) => JSON.parse(JSON.stringify(x));   // what jsonb does to it
 function memStore(opts) {
   const wallets = new Map(), tables = new Map(), ledger = [];
   const jp = { state: null, version: -1, hits: [] };
+  const profiles = new Map();   // user -> { display_name, avatar }
   const s = {
-    wallets, tables, ledger, jp,
+    wallets, tables, ledger, jp, profiles,
     beforeCommit: null,                       // test hook: simulate a racing writer
     async wallet(u) { return wallets.has(u) ? clone(wallets.get(u)) : null; },
     async openWallet(u, opening) {
       if (!wallets.has(u)) {
         wallets.set(u, { chips: opening, vault: 0, econ: {}, version: 0 });
-        ledger.push({ user: u, account: 'chips', amount: opening, kind: 'opening' });
+        ledger.push({ user: u, account: 'chips', amount: opening, kind: 'opening', at: s.now() });
       }
       return clone(wallets.get(u));
     },
@@ -99,7 +100,7 @@ function memStore(opts) {
         throw new Error(`23514 balances moved ${c.chips - w.chips}/${c.vault - w.vault}, ledger ${dc}/${dv}`);
       }
       if (c.chips < 0 || c.vault < 0) throw new Error('23514 negative balance');
-      for (const r of c.ledger) ledger.push({ user: u, ...clone(r) });
+      for (const r of c.ledger) ledger.push({ user: u, at: s.now(), ...clone(r) });
       wallets.set(u, { chips: c.chips, vault: c.vault, econ: clone(c.econ), version: version + 1 });
       if (c.tableId) {
         const k = u + '/' + c.tableId;
@@ -111,6 +112,25 @@ function memStore(opts) {
     ledgerSum(u, account = 'chips') {
       return ledger.filter(r => r.user === u && r.account === account).reduce((a, r) => a + r.amount, 0);
     },
+  };
+  s.now = () => new Date().toISOString();   // tests may move the store's clock
+  // leaderboard(): the leaderboard SQL function's rules, over this store.
+  s.leaderboard = async (since) => {
+    const out = [];
+    for (const [u, w] of wallets) {
+      const p = profiles.get(u);
+      if (!p) continue;
+      const mine = ledger.filter(r => r.user === u && (r.kind === 'bet' || r.kind === 'payout'));
+      const byRef = new Map();
+      for (const r of mine) if (r.ref) byRef.set(r.ref, (byRef.get(r.ref) || 0) + r.amount);
+      const hits = jp.hits.filter(h => h.user_id === u);
+      out.push({ user_id: u, display_name: p.display_name, avatar: p.avatar,
+        econ: { xp: w.econ.xp, equipped: w.econ.equipped }, worth: w.chips + w.vault,
+        week_net: mine.filter(r => r.at >= since).reduce((a, r) => a + r.amount, 0),
+        best_win: Math.max(0, ...byRef.values()), jp_total: hits.reduce((a, h) => a + h.amount, 0), jp_count: hits.length,
+        joined: '2026-11-15T00:00:00Z' });
+    }
+    return out;
   };
   if (opts && opts.jackpot) {
     s.pool = async () => ({ state: jp.state ? clone(jp.state) : null, version: jp.version });
@@ -859,6 +879,46 @@ async function main() {
     ok(a.out.every((x, i) => x === b.out[i]), 'Lv1 with 1,000 and Diamond with 200,000 got different spins or jackpots');
     ok(a.out.every((x, i) => x.split(':').slice(0, 2).join(':') === c.out[i].split(':').slice(0, 2).join(':')), 'the jackpot changed the reels');
     report('free spins contribute nothing; reels identical with or without the pool; Lv1 vs Diamond identical incl. jackpots (hard rule 2)', f);
+  }
+
+  section('leaderboard');
+  {
+    const f = fail, st = memStore({ jackpot: true }), ri = seededInt(12), jri = seededInt(13);
+    for (const [u, name] of [['u1', 'Alex'], ['u2', 'Sam'], ['u3', 'Kai']]) {
+      st.profiles.set(u, { display_name: name, avatar: 'fox' });
+      await PLAY.handle(st, u, { op: 'state' });
+    }
+    // last week's play must not count toward this week
+    st.now = () => '2020-01-01T00:00:00.000Z';
+    let seq = 0;
+    for (let i = 0; i < 20; i++) { const r = await PLAY.handle(st, 'u1', { op: 'deal', table: 'slot_gilded', seq, level: 10 }, { randInt: ri, jpRandInt: jri }); seq = r.view.seq; }
+    st.now = () => new Date().toISOString();
+    const lastWeek = st.ledger.filter(r => r.user === 'u1' && (r.kind === 'bet' || r.kind === 'payout')).reduce((a, r) => a + r.amount, 0);
+    for (let i = 0; i < 60; i++) { const r = await PLAY.handle(st, 'u1', { op: 'deal', table: 'slot_gilded', seq, level: 10 }, { randInt: ri, jpRandInt: jri }); seq = r.view.seq; }
+    let s2 = 0;
+    for (let i = 0; i < 30; i++) { const r = await PLAY.handle(st, 'u2', { op: 'deal', table: 'slot_lantern', seq: s2, level: 2 }, { randInt: ri, jpRandInt: jri }); s2 = r.view.seq; }
+    // u3 buys and equips a frame and a title
+    const w3 = st.wallets.get('u3');
+    await st.commit('u3', w3.version, { chips: w3.chips + 100000, vault: 0, econ: w3.econ, ledger: [{ account: 'chips', amount: 100000, kind: 'quests' }] });
+    ok((await PLAY.handle(st, 'u3', { op: 'buy', id: 'frame-gold' })).ok, 'buy a frame');
+    ok((await PLAY.handle(st, 'u3', { op: 'buy', id: 'title-regular' })).ok, 'buy a title');
+    st.profiles.set('nobody', null);
+    const r = await PLAY.handle(st, 'u2', { op: 'leaderboard' });
+    ok(r.ok && r.board && r.board.players.length === 3, 'three players on the board');
+    const by = Object.fromEntries(r.board.players.map(p => [p.name, p]));
+    const net = (u, since) => st.ledger.filter(x => x.user === u && (x.kind === 'bet' || x.kind === 'payout') && (!since || x.at >= since)).reduce((a, x) => a + x.amount, 0);
+    ok(by.Alex.worth === st.wallets.get('u1').chips + st.wallets.get('u1').vault, 'worth = chips + vault');
+    ok(by.Alex.weekNet === net('u1') - lastWeek && by.Alex.weekNet === net('u1', r.board.since), 'week net counts only this casino-clock week');
+    ok(by.Sam.weekNet === net('u2'), 'week net = game results');
+    ok(by.Kai.equipped.frame === 'frame-gold' && by.Kai.title === 'Regular' && by.Kai.weekNet === 0, 'equipped frame and title show; grants and shop are not winnings');
+    ok(by.Sam.mine && !by.Alex.mine && !by.Kai.mine, 'mine marks the caller only');
+    ok(!/"user_id"|"u1"|"u2"|"u3"/.test(JSON.stringify(r)), 'no user id in the board');
+    ok(by.Alex.level >= 1 && by.Alex.tier && by.Alex.bestWin >= 0, 'rank and best win present');
+    const bare = await PLAY.handle(memStore(), 'x', { op: 'leaderboard' });
+    ok(bare.ok && Array.isArray(bare.board.players), 'a store with no players gives an empty board');
+    const off = { wallet: async () => null };
+    ok((await PLAY.handle(off, 'x', { op: 'leaderboard' })).board === null, 'no leaderboard function: board is null');
+    report('worth, this week (casino clock), best win, jackpots; cosmetics on cards; no user ids; off without the migration', f);
   }
 
   section('the deal is indifferent to who you are (hard rule 2)');

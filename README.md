@@ -192,10 +192,10 @@ through saving (the vault), not handouts. Never through odds.
       only: drawn from numbers the game already settled.
 - [x] Home tab, notifications (bell + toasts), quests claimed by hand
 - [x] Supabase: auth, server wallets + ledger, every game dealt on the server
-- [ ] Leaderboard
-- [ ] Profiles (with Supabase): display name, avatar, equipped cosmetics
-      visible to friends. Gives the shop more to sell for chips (avatars,
-      frames). Cosmetic only, never anything that affects play.
+- [x] Leaderboard (Players tab): net worth, this week's winnings, level,
+      biggest win, jackpots, all computed server-side from the ledger
+- [x] Profiles visible to friends: name, avatar, avatar frames (new shop
+      cosmetic), title, felt and card back, on player cards. Cosmetic only.
 - [x] Slots: three machines (classic 3-reel, 20-line, 243-ways) with exact
       PAR sheets by complete enumeration (`enumerate-slots.js`), published
       reel strips, free spins, online and offline.

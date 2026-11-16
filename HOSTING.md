@@ -180,7 +180,8 @@ From there, build in this order:
    row, all in one transaction. The shoe is stored server-side only.
 3. **Three Card Poker and the economy** (wheels, quests, vault) the same way.
 4. **Leaderboard last.** A leaderboard before server-side dealing just ranks
-   whoever edited their chips most creatively.
+   whoever edited their chips most creatively. (Done: the Players tab, from
+   `supabase/migrations/20261117000001_leaderboard.sql`.)
 
 **Cost:** Supabase's free tier (database, auth, edge functions) comfortably
 covers a group of friends and well beyond. Note that free projects pause

@@ -106,6 +106,15 @@ const store = {
       throw e;
     }
   },
+  // Every online player's public numbers (leaderboard migration), or null if it isn't applied yet.
+  async leaderboard(since: string) {
+    try {
+      return await rpc('leaderboard', { p_since: since });
+    } catch (e) {
+      if (e instanceof DbError && (e.code === 'PGRST202' || e.code === '42883')) return null;
+      throw e;
+    }
+  },
   async recentHits(n: number) {
     try {
       const rows = await db(`jackpot_hits?select=at,tier,user_id,display_name,table_id,amount,reveal&order=id.desc&limit=${n}`);

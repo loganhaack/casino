@@ -58,7 +58,7 @@
   const SIDE_KEYS = Object.keys(BJ.SIDE_BETS);
   const ACTIONS = ['insure', 'decline', 'hit', 'stand', 'double', 'split'];
   const TCP_ACTIONS = ['play', 'fold'];
-  const OPS = ['state', 'pool', 'deal', 'act', 'claim', 'claimAll', 'spin', 'rescue', 'vault', 'buy', 'equip'];
+  const OPS = ['state', 'pool', 'leaderboard', 'deal', 'act', 'claim', 'claimAll', 'spin', 'rescue', 'vault', 'buy', 'equip'];
   const MAX_RETRIES = 8;   // the jackpot pool is shared, so conflicts are likelier than with one wallet
   const RECENT_HITS = 12;
 
@@ -415,6 +415,7 @@
     const jpRandInt = (opts && opts.jpRandInt) || BJ.cryptoRandInt;
     // Jackpot meters only: no wallet, no write.
     if (req.op === 'pool') return Object.assign({ ok: true }, await poolOut(store, null, userId));
+    if (req.op === 'leaderboard') return Object.assign({ ok: true }, await boardOut(store, userId, clock()));
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       let w = await store.wallet(userId);
@@ -490,6 +491,31 @@
   }
 
   function fail(error, message) { return { ok: false, error, message }; }
+
+  /**
+   * The leaderboard: every online player as a public card (display name,
+   * avatar, rank, equipped cosmetics, and numbers from the server's own
+   * records). "mine" marks the caller. Never a user id, never the wallet.
+   * { board: null } until the leaderboard migration is applied.
+   */
+  async function boardOut(store, userId, now) {
+    const since = ECON.weekStart(now);
+    const rows = store.leaderboard ? await store.leaderboard(since.toISOString()) : null;
+    if (!rows) return { board: null };
+    const blank = ECON.blankEcon(0).equipped;
+    const players = rows.map(r => {
+      const e = r.econ || {}, lv = ECON.levelFromXp(e.xp || 0), tier = ECON.tierIndex(lv.level);
+      const eq = Object.assign({}, blank, e.equipped || {});
+      for (const k of Object.keys(eq)) if (!ECON.SHOP_BY_ID[eq[k]] || ECON.SHOP_BY_ID[eq[k]].kind !== k) eq[k] = blank[k];
+      return {
+        name: r.display_name, avatar: r.avatar, level: lv.level, xp: e.xp || 0, tier: ECON.TIERS[tier].name,
+        title: ECON.SHOP_BY_ID[eq.title].text, equipped: eq,
+        worth: +r.worth, weekNet: +r.week_net, bestWin: +r.best_win, jpTotal: +r.jp_total, jpCount: +r.jp_count,
+        joined: r.joined, mine: r.user_id === userId,
+      };
+    });
+    return { board: { since: since.toISOString(), weekEnds: ECON.weekStart(new Date(since.getTime() + 8 * 86400000)).toISOString(), players } };
+  }
 
   /** The jackpot meters and recent hits, for the page. { jackpot: null } when there is no pool. */
   async function poolOut(store, fresh, userId) {

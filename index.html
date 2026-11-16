@@ -647,6 +647,49 @@
   .jp-hits .ok { color: var(--win); } .jp-hits .bad { color: var(--lose); }
   .mono-s { font: 11px var(--mono); color: var(--text-dim); overflow-wrap: anywhere; }
 
+  /* ---------- avatar frames + players ---------- */
+  .avf { --fa: #3a464c; --fb: #2a373c; position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none;
+    width: 40px; height: 40px; border-radius: 50%; font-size: 22px; line-height: 1; background: #10171a;
+    box-shadow: 0 0 0 3px var(--fa), 0 0 0 5px var(--fb); }
+  .avf.sm { width: 24px; height: 24px; font-size: 14px; box-shadow: 0 0 0 2px var(--fa), 0 0 0 3px var(--fb); }
+  .avf.lg { width: 76px; height: 76px; font-size: 44px; box-shadow: 0 0 0 5px var(--fa), 0 0 0 9px var(--fb); }
+  .avf.f-glow { animation: frameGlow 1.8s ease-in-out infinite alternate; }
+  @keyframes frameGlow { to { box-shadow: 0 0 0 3px var(--fa), 0 0 0 5px var(--fb), 0 0 14px 4px var(--fa); } }
+  .avf.f-spin { box-shadow: none; }
+  .avf.f-spin::after { content: ''; position: absolute; inset: 0; border-radius: 50%; z-index: -1; background: #10171a; }
+  .avf.f-spin::before { content: ''; position: absolute; inset: -5px; border-radius: 50%; z-index: -2;
+    background: conic-gradient(var(--fa), var(--fb), var(--fa), var(--fb), var(--fa)); animation: frameSpin 3s linear infinite; }
+  .avf.lg.f-spin::before { inset: -9px; }
+  .avf.sm.f-spin::before { inset: -3px; }
+  .avf { isolation: isolate; }
+  @keyframes frameSpin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .avf.f-glow, .avf.f-spin::before { animation: none; } }
+  .lb-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .lb-tabs { display: flex; gap: 5px; flex-wrap: wrap; }
+  .lb-tabs button { font: inherit; font-size: 12px; padding: 5px 10px; border-radius: 14px; cursor: pointer;
+    background: rgba(255,255,255,.06); color: var(--text); border: 1px solid var(--border); }
+  .lb-tabs button.on { background: var(--chip); color: #1a1a1a; border-color: var(--chip); }
+  .lb-row { display: grid; grid-template-columns: 34px auto 1fr auto; gap: 10px; align-items: center; padding: 8px 10px;
+    border-radius: 10px; cursor: pointer; margin-top: 6px; background: rgba(255,255,255,.03); border: 1px solid transparent; }
+  .lb-row:hover { border-color: var(--border); }
+  .lb-row.me { background: rgba(232,197,71,.1); border-color: rgba(232,197,71,.35); }
+  .lb-pos { font: 800 16px var(--mono); text-align: center; color: var(--text-dim); }
+  .lb-pos.p1, .lb-pos.p2, .lb-pos.p3 { font-size: 20px; }
+  .lb-who { min-width: 0; }
+  .lb-who strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lb-who .sub { font-size: 11.5px; }
+  .lb-val { font: 700 16px var(--mono); color: var(--chip); text-align: right; white-space: nowrap; }
+  .lb-val.neg { color: var(--lose); }
+  .pcard { display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center; }
+  .pcard h2 { margin: 0 0 2px; font-size: 22px; }
+  .pstats { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin-top: 14px; }
+  .pstat { background: rgba(255,255,255,.04); border-radius: 8px; padding: 8px 10px; }
+  .pstat .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim); }
+  .pstat .v { font: 700 16px var(--mono); }
+  .pcos { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; align-items: center; font-size: 12.5px; color: var(--text-dim); }
+  .pcos .sw { width: 36px; height: 24px; border-radius: 5px; display: inline-block; vertical-align: middle; margin-right: 4px; border: 1px solid rgba(255,255,255,.15); }
+  @media (max-width: 560px) { .lb-row { grid-template-columns: 28px auto 1fr auto; gap: 7px; padding: 7px; } .lb-val { font-size: 14px; } }
+
   /* ---------- big-hit celebration (display only) ---------- */
   #bigHit { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; overflow: hidden;
     background: radial-gradient(ellipse at 50% 45%, rgba(70,20,0,.82), rgba(0,0,0,.9)); cursor: pointer; }
@@ -698,6 +741,7 @@
       <button data-game="fb">Free Bet</button>
       <button data-game="slots">Slots</button>
       <button data-game="rewards">Rewards</button>
+      <button data-game="players">Players</button>
     </nav>
     <div class="rank" id="rankBox">
       <div class="rank-line"><span id="rankWho"></span><span id="rankLevel">Lv 1</span> <span class="tier" id="rankTier">Bronze</span> <span class="ptitle" id="rankTitle"></span></div>
@@ -887,6 +931,16 @@
       <h3 id="bjRulesTitle">Rules in force</h3>
       <table id="bjRules"></table>
     </div>
+  </section>
+
+  <!-- ===================== PLAYERS ===================== -->
+  <section id="game-players" hidden>
+    <div class="panel">
+      <div class="lb-head"><h3 style="margin:0">Leaderboard</h3><div class="lb-tabs" id="lbTabs"></div></div>
+      <div id="lbBody"></div>
+      <p class="sub" id="lbNote" style="margin:10px 0 0"></p>
+    </div>
+    <div class="panel" id="lbCard" style="margin-top:14px" hidden></div>
   </section>
 
   <!-- ===================== SLOTS ===================== -->
@@ -1278,6 +1332,7 @@ function load() {
       s.econ = Object.assign(e, parsed.econ || {});
       s.econ.ledger = Object.assign(e.ledger, (parsed.econ || {}).ledger || {});
       s.econ.equipped = Object.assign(blankEcon().equipped, s.econ.equipped);
+      for (const id of Object.values(blankEcon().equipped)) if (!s.econ.owned.includes(id)) s.econ.owned.push(id);   // new cosmetic kinds (frames)
       s.econ.vault = Object.assign(blankEcon().vault, (parsed.econ || {}).vault || {});
       // Saves from before quests were claimed by hand: a finished quest there was already paid.
       for (const q of s.econ.quests.list || []) if (q.done && q.claimed === undefined) q.claimed = true;
@@ -2312,13 +2367,15 @@ function bjRenderRules() {
 /* ---------- table switching ---------- */
 
 function showGame(g) {
-  S.game = BJ_TABLES[g] || g === 'rewards' || g === 'home' || g === 'slots' ? g : 'tcp';
+  S.game = BJ_TABLES[g] || ['rewards', 'home', 'slots', 'players'].includes(g) ? g : 'tcp';
   const isBj = !!BJ_TABLES[S.game];
   $('game-bj').hidden = !isBj;
   $('game-tcp').hidden = S.game !== 'tcp';
   $('game-rewards').hidden = S.game !== 'rewards';
   $('game-slots').hidden = S.game !== 'slots';
   if (S.game === 'slots') slotRender();
+  $('game-players').hidden = S.game !== 'players';
+  if (S.game === 'players') lbShow();
   $('game-home').hidden = S.game !== 'home';
   if (S.game === 'rewards') econRenderRewards();
   if (S.game === 'home') renderHome();
@@ -2705,6 +2762,100 @@ async function acctBoot() {
 }
 
 /* ===========================================================================
+   PLAYERS: leaderboard and player cards (online; numbers from the server)
+   ---------------------------------------------------------------------------
+   Every number here is computed by the server from records only it writes
+   (wallets, ledger, jackpot hits), so nobody can edit their way up. The page
+   just sorts and draws. Cosmetic frames are drawn by avatarHTML().
+   =========================================================================== */
+
+/** An avatar inside its equipped frame (a shop cosmetic). size: '' | 'sm' | 'lg'. */
+function avatarHTML(avatar, frameId, size) {
+  const f = ECON.SHOP_BY_ID[frameId] || ECON.SHOP_BY_ID['frame-none'];
+  return `<span class="avf${size ? ' ' + size : ''} f-${f.style}" style="--fa:${f.colors[0]};--fb:${f.colors[1]}" title="${escHTML(f.name)} frame">` +
+    `${AVATAR_ICON[avatar] || AVATAR_ICON.fox}</span>`;
+}
+
+const LB_BOARDS = [
+  { id: 'worth', name: 'Net worth', val: p => p.worth, fmt: v => v.toLocaleString(), note: 'Chips plus vault.' },
+  { id: 'week', name: 'This week', val: p => p.weekNet, fmt: v => (v > 0 ? '+' : '') + v.toLocaleString(),
+    note: 'Game results only (bets and payouts, jackpots included) since Monday midnight ET. Wheels, quests and the shop don\'t count.' },
+  { id: 'level', name: 'Level', val: p => p.xp, fmt: (v, p) => 'Lv ' + p.level, note: 'XP comes from time at the tables, not bet size.' },
+  { id: 'best', name: 'Biggest win', val: p => p.bestWin, fmt: v => v.toLocaleString(), note: 'Best single round or spin, net of its bet.' },
+  { id: 'jackpots', name: 'Jackpots', val: p => p.jpTotal, fmt: (v, p) => p.jpCount ? `${v.toLocaleString()} (${p.jpCount})` : '0', note: 'Linked progressive jackpots won.' },
+];
+const LB = { board: 'worth', data: null, at: 0, loading: false, msg: '', open: null };
+
+async function lbLoad(force) {
+  if (LB.loading || !cloudOn() || !auth) return;
+  if (!force && LB.data && Date.now() - LB.at < 30000) return;
+  LB.loading = true;
+  try {
+    const d = await onCall({ op: 'leaderboard' });
+    if (d && d.ok) { LB.data = d.board; LB.at = Date.now(); LB.msg = d.board ? '' : 'The leaderboard isn\'t switched on yet (its database migration hasn\'t been applied).'; }
+    else LB.msg = (d && d.message) || 'Couldn\'t load the leaderboard.';
+  } catch (e) { LB.msg = 'Couldn\'t reach the server. Try again in a moment.'; }
+  LB.loading = false;
+  if (S.game === 'players') lbRender();
+}
+
+function lbShow() { lbRender(); lbLoad(false); }
+
+function lbSorted() {
+  const b = LB_BOARDS.find(x => x.id === LB.board);
+  return (LB.data ? LB.data.players.slice() : []).sort((x, y) => b.val(y) - b.val(x) || y.worth - x.worth || (x.name < y.name ? -1 : 1));
+}
+
+function lbRender() {
+  $('lbTabs').innerHTML = LB_BOARDS.map(b => `<button data-lb="${b.id}" class="${b.id === LB.board ? 'on' : ''}">${b.name}</button>`).join('');
+  const b = LB_BOARDS.find(x => x.id === LB.board);
+  if (!cloudOn() || !auth) {
+    $('lbBody').innerHTML = '<p class="sub" style="margin:10px 0 0">The leaderboard is for signed-in players. Every chip on it was dealt and settled by the server, so nobody can edit their way to the top. ' +
+      '<a href="#" onclick="showGame(\'home\');return false">Sign in on Home</a> to join.</p>';
+    $('lbNote').textContent = ''; $('lbCard').hidden = true;
+    return;
+  }
+  if (!LB.data) {
+    $('lbBody').innerHTML = `<p class="sub" style="margin:10px 0 0">${LB.msg || 'Loading\u2026'}</p>`;
+    $('lbNote').textContent = ''; return;
+  }
+  const rows = lbSorted();
+  const medal = ['\u{1F947}', '\u{1F948}', '\u{1F949}'];
+  $('lbBody').innerHTML = rows.map((p, i) => {
+    const v = b.val(p);
+    return `<div class="lb-row${p.mine ? ' me' : ''}" data-lbp="${i}"><div class="lb-pos p${i + 1}">${i < 3 ? medal[i] : i + 1}</div>` +
+      `${avatarHTML(p.avatar, p.equipped.frame)}<div class="lb-who"><strong>${escHTML(p.name)}${p.mine ? ' <span class="sub">(you)</span>' : ''}</strong>` +
+      `<span class="sub">${p.title ? escHTML(p.title) + ' &middot; ' : ''}Lv ${p.level} ${escHTML(p.tier)}</span></div>` +
+      `<div class="lb-val${v < 0 ? ' neg' : ''}">${b.fmt(v, p)}</div></div>`;
+  }).join('') || '<p class="sub">No players yet.</p>';
+  const ends = LB.data.weekEnds ? ` The week resets in ${fmtWait(Date.parse(LB.data.weekEnds) - Date.now())}.` : '';
+  $('lbNote').innerHTML = `${b.note}${LB.board === 'week' ? ends : ''} ${rows.length} player${rows.length === 1 ? '' : 's'}. ` +
+    `<a href="#" onclick="lbLoad(true);return false">Refresh</a>`;
+  if (LB.open != null) lbCard(LB.open);
+}
+
+function lbCard(i) {
+  const p = lbSorted()[i];
+  if (!p) { $('lbCard').hidden = true; return; }
+  LB.open = i;
+  const sh = (id) => ECON.SHOP_BY_ID[id] || {};
+  const felt = sh(p.equipped.felt), back = sh(p.equipped.back), frame = sh(p.equipped.frame);
+  const stat = (k, v) => `<div class="pstat"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  $('lbCard').hidden = false;
+  $('lbCard').innerHTML = `<div class="pcard">${avatarHTML(p.avatar, p.equipped.frame, 'lg')}<div>` +
+    `<h2>${escHTML(p.name)}${p.mine ? ' <span class="sub">(you)</span>' : ''}</h2>` +
+    `<div class="sub">${p.title ? '<em>' + escHTML(p.title) + '</em> &middot; ' : ''}Level ${p.level} &middot; ${escHTML(p.tier)} tier` +
+    `${p.joined ? ' &middot; playing since ' + new Date(p.joined).toLocaleDateString() : ''}</div></div></div>` +
+    '<div class="pstats">' + stat('Net worth', p.worth.toLocaleString()) + stat('This week', (p.weekNet > 0 ? '+' : '') + p.weekNet.toLocaleString()) +
+    stat('Biggest win', p.bestWin.toLocaleString()) + stat('Jackpots', p.jpCount ? `${p.jpTotal.toLocaleString()} (${p.jpCount})` : 'none yet') +
+    stat('XP', p.xp.toLocaleString()) + '</div>' +
+    `<div class="pcos">Table: <span><span class="sw" style="background:radial-gradient(ellipse at 50% 0%, ${(felt.colors || ['#0f4034'])[0]}, ${(felt.colors || ['', '#0a2c24'])[1]})"></span>${escHTML(felt.name || '')}</span>` +
+    `<span>Cards: <span class="sw" style="background:repeating-linear-gradient(45deg, ${(back.colors || ['#2a4d8f'])[0]} 0 5px, ${(back.colors || ['', '#1e3a6e'])[1]} 5px 10px)"></span>${escHTML(back.name || '')}</span>` +
+    `<span>Frame: ${escHTML(frame.name || 'none')}</span></div>` +
+    '<p class="sub" style="margin:10px 0 0">Cosmetics are bought with chips in the Rewards shop and change nothing about play.</p>';
+}
+
+/* ===========================================================================
    SOUND AND BIG HITS (presentation only)
    =========================================================================== */
 
@@ -2716,7 +2867,8 @@ function renderSnd() {
   $('sndBtn').title = on ? 'Sound effects on (click to mute)' : 'Sound effects off (click to turn on)';
 }
 
-const escHTML = (x) => String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+/** Escape text for HTML (other players' names). A declaration, so it works anywhere in the script. */
+function escHTML(x) { return String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
 
 let bhTimers = [];
 /**
@@ -3915,6 +4067,8 @@ function shopItemHTML(it, p) {
   const owned = E().owned.includes(it.id), eq = E().equipped[it.kind] === it.id;
   const sw = it.kind === 'title'
     ? `<div class="sw" style="background:rgba(255,255,255,.06);font-style:italic">${it.text || '&mdash;'}</div>`
+    : it.kind === 'frame'
+    ? `<div class="sw" style="background:rgba(255,255,255,.04);display:flex;align-items:center;justify-content:center">${avatarHTML(profile ? profile.avatar : 'fox', it.id)}</div>`
     : `<div class="sw" style="background:${it.kind === 'back'
         ? `repeating-linear-gradient(45deg, ${it.colors[0]} 0 6px, ${it.colors[1]} 6px 12px)`
         : `radial-gradient(ellipse at 50% 0%, ${it.colors[0]}, ${it.colors[1]})`}"></div>`;
@@ -3969,7 +4123,7 @@ function econRenderHeader() {
   const on = online();
   const lv = on ? ON.wallet.rank : econLevel();   // online rank is the server's (same ECON math)
   $('rankLevel').textContent = `Lv ${lv.level}`;
-  $('rankWho').innerHTML = profile ? `${AVATAR_ICON[profile.avatar] || ''} ${profile.display_name} &middot; ` : '';
+  $('rankWho').innerHTML = profile ? `${avatarHTML(profile.avatar, E().equipped.frame, 'sm')} ${escHTML(profile.display_name)} &middot; ` : '';
   $('rankTier').textContent = on ? lv.tierName : ECON.TIERS[econTier()].name;
   $('rankTitle').textContent = ECON.SHOP_BY_ID[E().equipped.title].text;
   $('xpFill').style.width = (100 * lv.into / lv.need).toFixed(1) + '%';
@@ -4323,6 +4477,16 @@ if (typeof setInterval === 'function') {   // display timers (absent in some tes
   setInterval(jpTick, 120);
   setInterval(jpPoll, 15000);
 }
+
+/* ---------- players wiring ---------- */
+$('lbTabs').onclick = (e) => {
+  const b = e.target && e.target.closest ? e.target.closest('[data-lb]') : null;
+  if (b) { LB.board = b.dataset.lb; LB.open = null; $('lbCard').hidden = true; lbRender(); }
+};
+$('lbBody').onclick = (e) => {
+  const r = e.target && e.target.closest ? e.target.closest('[data-lbp]') : null;
+  if (r) lbCard(+r.dataset.lbp);
+};
 
 /* ---------- slots wiring ---------- */
 $('slSpin').onclick = () => {

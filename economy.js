@@ -428,6 +428,14 @@
     { id: 'title-roller',  kind: 'title', name: 'High Roller',  price: 250000, text: 'High Roller' },
     { id: 'title-whale',   kind: 'title', name: 'Whale',        price: 2500000, text: 'Whale' },
     { id: 'title-legend',  kind: 'title', name: 'Legend',       price: 10000000, text: 'Legend' },
+    // Avatar frames: the ring around your avatar that other players see on
+    // the leaderboard and your player card. style: solid | glow | spin.
+    { id: 'frame-none',    kind: 'frame', name: 'No frame',     price: 0,       colors: ['#3a464c', '#2a373c'], style: 'solid' },
+    { id: 'frame-silver',  kind: 'frame', name: 'Silver',       price: 8000,    colors: ['#e9edf2', '#8d95a0'], style: 'solid' },
+    { id: 'frame-gold',    kind: 'frame', name: 'Gold',         price: 50000,   colors: ['#ffe08a', '#b8861a'], style: 'solid' },
+    { id: 'frame-ruby',    kind: 'frame', name: 'Ruby',         price: 150000,  colors: ['#ff5a6e', '#8a0a1e'], style: 'glow' },
+    { id: 'frame-aurora',  kind: 'frame', name: 'Aurora',       price: 600000,  colors: ['#3bffb0', '#7a3bff'], style: 'spin' },
+    { id: 'frame-diamond', kind: 'frame', name: 'Diamond',      price: 3000000, colors: ['#ffffff', '#7fd8ff'], style: 'spin' },
   ];
   /* -------------------------------------------------------------------------
      ROTATING SHOP. Deterministic from the casino-clock date (like events and quests),
@@ -445,21 +453,25 @@
       { id: 'felt-neon',  kind: 'felt',  name: 'Neon Strip',  price: 30000, colors: ['#0d4a5a', '#06161f'] },
       { id: 'back-neon',  kind: 'back',  name: 'Neon Grid',   price: 20000, colors: ['#d1349b', '#2f2fb8'] },
       { id: 'title-owl',  kind: 'title', name: 'Night Owl',   price: 25000, text: 'Night Owl' },
+      { id: 'frame-neon', kind: 'frame', name: 'Neon Ring',   price: 40000, colors: ['#ff3bd1', '#3bd2ff'], style: 'glow' },
     ] },
     { id: 'lodge', name: 'Autumn Lodge', items: [
       { id: 'felt-oak',   kind: 'felt',  name: 'Oak Lodge',   price: 30000, colors: ['#6a4320', '#2f1d0c'] },
       { id: 'back-maple', kind: 'back',  name: 'Maple',       price: 20000, colors: ['#c2551f', '#7d2e0e'] },
       { id: 'title-fire', kind: 'title', name: 'Fireside',    price: 25000, text: 'Fireside' },
+      { id: 'frame-ember', kind: 'frame', name: 'Ember',      price: 40000, colors: ['#ffb347', '#a8320c'], style: 'glow' },
     ] },
     { id: 'ocean', name: 'Ocean Deep', items: [
       { id: 'felt-reef',  kind: 'felt',  name: 'Reef',        price: 30000, colors: ['#0e5a6b', '#06272f'] },
       { id: 'back-wave',  kind: 'back',  name: 'Wave',        price: 20000, colors: ['#2a8fbf', '#14506e'] },
       { id: 'title-diver', kind: 'title', name: 'Deep Diver', price: 25000, text: 'Deep Diver' },
+      { id: 'frame-coral', kind: 'frame', name: 'Coral',      price: 40000, colors: ['#ff8a7a', '#1aa3b8'], style: 'solid' },
     ] },
     { id: 'court', name: 'Royal Court', items: [
       { id: 'felt-ermine', kind: 'felt', name: 'Ermine',      price: 30000, colors: ['#3b2d5c', '#16102a'] },
       { id: 'back-crown', kind: 'back',  name: 'Crown',       price: 20000, colors: ['#b8912a', '#4a1f5c'] },
       { id: 'title-royal', kind: 'title', name: 'Royalty',    price: 25000, text: 'Royalty' },
+      { id: 'frame-crown', kind: 'frame', name: 'Crown',      price: 40000, colors: ['#ffd23b', '#6a1fb0'], style: 'spin' },
     ] },
   ];
   for (const c of COLLECTIONS) for (const it of c.items) { it.collection = c.id; SHOP.push(it); }
@@ -470,6 +482,11 @@
   function weekMonday(date) {
     const w = wall(date);
     return [w.y, w.mo, w.d - ((w.dow + 6) % 7)];
+  }
+  /** Midnight starting this casino-clock week (Monday 00:00 ET). The leaderboard's week. */
+  function weekStart(date) {
+    const [y, mo, d] = weekMonday(date);
+    return atWall(y, mo, d);
   }
   /** Whole weeks since a fixed Monday, counted by calendar date (DST-proof). */
   function weekIndex(date) {
@@ -541,8 +558,8 @@
       xp: 0,
       lastBonusSpin: 0,
       quests: { day: '', tier: -1, list: [] },
-      owned: ['felt-green', 'back-blue', 'title-none'],
-      equipped: { felt: 'felt-green', back: 'back-blue', title: 'title-none' },
+      owned: ['felt-green', 'back-blue', 'title-none', 'frame-none'],
+      equipped: { felt: 'felt-green', back: 'back-blue', title: 'title-none', frame: 'frame-none' },
       ledger: { opening, bonusWheel: 0, rescueWheel: 0, quests: 0, promo: 0, interest: 0, shop: 0, admin: 0 },
       vault: { balance: 0, day: '', minToday: 0 },   // saved chips: can't be bet, earn capped daily interest
       spins: [],    // recent wheel results, newest last (capped)
@@ -555,6 +572,9 @@
     const e = econ || {};
     for (const k of Object.keys(b)) if (e[k] === undefined) e[k] = b[k];
     for (const k of Object.keys(b.ledger)) if (e.ledger[k] === undefined) e.ledger[k] = b.ledger[k];
+    // New cosmetic kinds (e.g. frames) for accounts made before they existed.
+    for (const k of Object.keys(b.equipped)) if (!e.equipped[k]) e.equipped[k] = b.equipped[k];
+    for (const id of Object.values(b.equipped)) if (!e.owned.includes(id)) e.owned.push(id);
     return e;
   }
 
@@ -741,7 +761,7 @@
     EVENTS, activeEvents, isActive, upcomingEvents, promoFor,
     QUESTS, QUEST_CHIPS, dayKey, dailyQuests, questText, advanceQuest, questReward,
     VAULT, vaultInterest, vaultAccrue, vaultMove,
-    SHOP, SHOP_BY_ID, COLLECTIONS, shopCycle, shopPrice, weekIndex,
+    SHOP, SHOP_BY_ID, COLLECTIONS, shopCycle, shopPrice, weekIndex, weekStart,
     blankEcon, normalizeEcon, levelOf, tierOf, grant, addXp, ensureQuests, accrueVault, afterRound,
     claimQuest, bonusReadyAt, rescueReady, spin, moveVault, buy, equip, bjFacts,
   };

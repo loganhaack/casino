@@ -108,6 +108,7 @@ function loadPage(net, storage) {
   acctSignOut, econClaimQuest, econClaimAll, econVault, econBuy, econEquip, econSpinClick, econUnclaimed, E,
   TCPS, onTcpDeal, onTcpAct, deal, resolve, getPhase: () => phase,
   SLS, slotST, slotPick, onSlotSpin, slotSpin, setAnimUntil: (v) => { animUntil = v; },
+  getLB: () => LB, lbLoad, lbCard,
   get bjTable() { return bjTable; } };`, sandbox, { filename: 'index.html:script' });
   return { H: sandbox.__h, el: id => sandbox.document.getElementById(id) };
 }
@@ -535,6 +536,25 @@ setTimeout(() => { console.log('\nFAIL: timed out (a round never finished?)'); p
        net.store.wallets.get(USER).vault === net.store.ledgerSum(USER, 'vault'), 'server ledger identity, chips and vault');
     ok(P.H.getS().chips === S0 && JSON.stringify(P.H.getS().econ.ledger) === L0, 'browser chips and browser ledger untouched by online rewards');
     report('Rewards online: Bonus Wheel, vault, shop, equip and quest claims all run on the server; page mirrors it', f);
+  }
+
+  console.log('\nplayers');
+  {
+    const f = fail;
+    net.store.profiles.set(USER, { display_name: 'Tester', avatar: 'fox' });
+    net.store.profiles.set('friend-1', { display_name: 'Sam', avatar: 'owl' });
+    await net.store.openWallet('friend-1', 1000);
+    P.H.showGame('players');
+    await tick();
+    const LB = P.H.getLB();
+    ok(LB.data && LB.data.players.length === 2, 'the board loaded both players from the server');
+    const me = LB.data && LB.data.players.find(p => p.mine);
+    ok(me && me.name === 'Tester' && me.worth === net.store.wallets.get(USER).chips + net.store.wallets.get(USER).vault, 'your row has your server worth');
+    const body = P.el('lbBody').innerHTML;
+    ok(/Tester/.test(body) && /Sam/.test(body) && /avf/.test(body), 'rows drawn with framed avatars');
+    P.H.lbCard(0);
+    ok(P.el('lbCard').hidden === false && /Net worth/.test(P.el('lbCard').innerHTML), 'a player card opens');
+    report('Players tab: the server\'s board, your row marked, framed avatars, player cards', f);
   }
 
   console.log('\nsign out');
