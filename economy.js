@@ -149,10 +149,58 @@
   }
 
   /* =========================================================================
+     CASINO CLOCK
+     Every calendar rule (events, the quest day, the shop week, the vault day)
+     runs on ONE fixed timezone, not the device's. So everyone, everywhere,
+     sees the same Double XP day, and changing your computer's clock or
+     timezone can't move you into an event. The server (UTC) and every
+     browser compute the same answers.
+
+       wall(date)              that instant's date/time on the casino clock
+       atWall(y, mo, d, h, mi) the instant when the casino clock reads that
+                               (mo 0-based; out-of-range days roll over, like Date)
+
+     Elapsed-time rules (wheel cooldowns) use real instants and don't care.
+     ========================================================================= */
+
+  const CLOCK_ZONE = 'America/New_York';
+  const CLOCK_NAME = 'US Eastern time';
+  const DOW = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  let wallFmt = null;
+
+  function wall(date) {
+    if (!wallFmt) {
+      wallFmt = new Intl.DateTimeFormat('en-US', { timeZone: CLOCK_ZONE, hourCycle: 'h23', weekday: 'short',
+        year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' });
+    }
+    const p = {};
+    for (const x of wallFmt.formatToParts(date)) p[x.type] = x.value;
+    return { y: +p.year, mo: +p.month - 1, d: +p.day, h: +p.hour % 24, mi: +p.minute, s: +p.second, dow: DOW[p.weekday] };
+  }
+
+  function atWall(y, mo, d, h = 0, mi = 0) {
+    const target = Date.UTC(y, mo, d, h, mi);
+    let t = target;
+    for (let i = 0; i < 3; i++) {   // converges in one step except across a DST change
+      const w = wall(new Date(t));
+      const seen = Date.UTC(w.y, w.mo, w.d, w.h, w.mi);
+      if (seen === target) break;
+      t += target - seen;
+    }
+    return new Date(t);
+  }
+
+  /** Midnight starting the next casino-clock day. */
+  function nextDayStart(date) {
+    const w = wall(date);
+    return atWall(w.y, w.mo, w.d + 1);
+  }
+
+  /* =========================================================================
      EVENTS
-     A fixed weekly calendar computed from the local date, so every friend
-     sees the same event at the same time with no server. Events never touch
-     game settlement. "Promo" events pay a separate bonus, recorded as such.
+     A fixed weekly calendar on the casino clock, so every friend sees the
+     same event at the same time. Events never touch game settlement.
+     "Promo" events pay a separate bonus, recorded as such.
      ========================================================================= */
 
   const EVENTS = [
@@ -170,20 +218,23 @@
       promo: { game: ['tcp'], on: 'pairPlusBig', rate: 3, cap: 2500 } },
   ];
 
-  /** Events running at this moment (local time). */
+  /** Events running at this moment (casino clock). */
   function activeEvents(date) {
-    const d = date.getDay(), h = date.getHours();
-    return EVENTS.filter(e => e.day === d && h >= e.fromHour && h < e.toHour);
+    const w = wall(date);
+    return EVENTS.filter(e => e.day === w.dow && w.h >= e.fromHour && w.h < e.toHour);
   }
   const isActive = (date, id) => activeEvents(date).some(e => e.id === id);
 
-  /** The next `n` event start times after `date`, soonest first. */
+  /** The next `n` event start times (real instants) after `date`, soonest first. */
   function upcomingEvents(date, n) {
     const out = [];
+    const w = wall(date);
     for (let add = 0; add <= 7 && out.length < n * 2; add++) {
+      const cal = new Date(Date.UTC(w.y, w.mo, w.d + add));   // a calendar date, read with UTC getters
       for (const e of EVENTS) {
-        const start = new Date(date.getFullYear(), date.getMonth(), date.getDate() + add, e.fromHour);
-        if (start.getDay() === e.day && start > date) out.push({ event: e, start });
+        if (cal.getUTCDay() !== e.day) continue;
+        const start = atWall(cal.getUTCFullYear(), cal.getUTCMonth(), cal.getUTCDate(), e.fromHour);
+        if (start > date) out.push({ event: e, start });
       }
     }
     return out.sort((a, b) => a.start - b.start).slice(0, n);
@@ -254,10 +305,11 @@
   const QUEST_BY_ID = Object.fromEntries(QUESTS.map(q => [q.id, q]));
   const QUEST_CHIPS = 100;   // x tier mult (x2 during Quest Rush)
 
-  /** Local calendar day, 'YYYY-MM-DD'. */
+  /** Casino-clock calendar day, 'YYYY-MM-DD'. */
   function dayKey(date) {
     const p = (n) => String(n).padStart(2, '0');
-    return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}`;
+    const w = wall(date);
+    return `${w.y}-${p(w.mo + 1)}-${p(w.d)}`;
   }
 
   // Deterministic PRNG for quest selection (NOT for anything with stakes).
@@ -378,7 +430,7 @@
     { id: 'title-legend',  kind: 'title', name: 'Legend',       price: 10000000, text: 'Legend' },
   ];
   /* -------------------------------------------------------------------------
-     ROTATING SHOP. Deterministic from the local date (like events and quests),
+     ROTATING SHOP. Deterministic from the casino-clock date (like events and quests),
      so friends see the same shop. Three layers:
        - Deal of the Day: one regular item at 40% off, new at midnight.
        - Weekly Spotlight: three regular items at 25% off, new each Monday.
@@ -414,20 +466,19 @@
   const SHOP_BY_ID = Object.fromEntries(SHOP.map(s => [s.id, s]));
   const DEAL_OFF = 0.40, SPOTLIGHT_OFF = 0.25;
 
-  /** Monday 00:00 (local) of the week containing `date`. */
-  function weekStart(date) {
-    const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-    return d;
+  /** Casino-clock calendar date of the Monday starting `date`'s week, as [y, mo, d]. */
+  function weekMonday(date) {
+    const w = wall(date);
+    return [w.y, w.mo, w.d - ((w.dow + 6) % 7)];
   }
   /** Whole weeks since a fixed Monday, counted by calendar date (DST-proof). */
   function weekIndex(date) {
-    const m = weekStart(date);
-    return Math.round((Date.UTC(m.getFullYear(), m.getMonth(), m.getDate()) - Date.UTC(2024, 0, 1)) / (7 * 86400000));
+    const [y, mo, d] = weekMonday(date);
+    return Math.round((Date.UTC(y, mo, d) - Date.UTC(2024, 0, 1)) / (7 * 86400000));
   }
   const salePrice = (price, off) => Math.max(50, Math.round(price * (1 - off) / 50) * 50);
 
-  /** Everything on sale at `date`: same answer on every device for the same local date. */
+  /** Everything on sale at `date`: same answer on every device at the same moment. */
   function shopCycle(date) {
     const wk = weekIndex(date);
     const cIdx = ((wk % COLLECTIONS.length) + COLLECTIONS.length) % COLLECTIONS.length;
@@ -438,9 +489,9 @@
     const dr = mulberry32(seedFrom('deal|' + dayKey(date)));
     const dealPool = regular.filter(s => !spotlight.includes(s.id));
     const deal = dealPool[Math.floor(dr() * dealPool.length)].id;
-    const start = weekStart(date);
-    const ends = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 7);
-    const tomorrow = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
+    const [y, mo, d] = weekMonday(date);
+    const ends = atWall(y, mo, d + 7);
+    const tomorrow = nextDayStart(date);
     return {
       deal, dealOff: DEAL_OFF, dealEnds: tomorrow,
       spotlight, spotlightOff: SPOTLIGHT_OFF, weekEnds: ends,
@@ -463,14 +514,236 @@
     return { price: it.price, base: it.price, off: 0, why: it.collection ? 'collection' : '' };
   }
 
+  /* =========================================================================
+     ACCOUNT ACTIONS
+     Every change the economy makes to a player, as plain functions on an
+     account object. The page (offline, S.chips / S.econ) and the server
+     (online, the wallet) run these SAME functions, so online and offline
+     can't drift apart:
+
+       a = { chips, econ, rows }
+         chips  chips on hand
+         econ   saved economy state (blankEcon() shape)
+         rows   optional: if an array, every balance change is also pushed as
+                a ledger row { account, amount, kind } (the server's ledger
+                table). The page leaves it out; it keeps econ.ledger totals.
+
+     Each action returns or pushes events (plain objects) describing what
+     happened, for the caller to announce in its own way. Nothing here can see
+     or change how a game deals or settles: afterRound() receives finished
+     results only. `t` is the current instant; `randInt` the RNG (crypto in
+     play; seeded only in tests).
+     ========================================================================= */
+
+  /** Economy state for a new player. */
+  function blankEcon(opening) {
+    return {
+      xp: 0,
+      lastBonusSpin: 0,
+      quests: { day: '', tier: -1, list: [] },
+      owned: ['felt-green', 'back-blue', 'title-none'],
+      equipped: { felt: 'felt-green', back: 'back-blue', title: 'title-none' },
+      ledger: { opening, bonusWheel: 0, rescueWheel: 0, quests: 0, promo: 0, interest: 0, shop: 0, admin: 0 },
+      vault: { balance: 0, day: '', minToday: 0 },   // saved chips: can't be bet, earn capped daily interest
+      spins: [],    // recent wheel results, newest last (capped)
+    };
+  }
+
+  /** Fill in anything an older saved econ is missing (never overwrites). */
+  function normalizeEcon(econ, opening) {
+    const b = blankEcon(opening);
+    const e = econ || {};
+    for (const k of Object.keys(b)) if (e[k] === undefined) e[k] = b[k];
+    for (const k of Object.keys(b.ledger)) if (e.ledger[k] === undefined) e.ledger[k] = b.ledger[k];
+    return e;
+  }
+
+  const levelOf = (a) => levelFromXp(a.econ.xp);
+  const tierOf = (a) => tierIndex(levelOf(a).level);
+
+  /** The ONLY way chips enter or leave outside a game. Recorded in the ledger. */
+  function grant(a, kind, amount) {
+    if (!Number.isInteger(amount)) throw new Error('Ledger amounts must be whole chips: ' + amount);
+    if (kind === 'opening' || !(kind in a.econ.ledger)) throw new Error('Unknown ledger entry: ' + kind);
+    if (amount === 0) return;
+    a.chips += amount;
+    a.econ.ledger[kind] += amount;
+    if (a.rows) a.rows.push({ account: 'chips', amount, kind });
+  }
+
+  /** Add XP (doubled during Double XP). Pushes a level event; returns the new level if it went up, else 0. */
+  function addXp(a, base, t, ev) {
+    const before = levelOf(a).level, tierBefore = tierOf(a);
+    a.econ.xp += base * (isActive(t, 'doubleXp') ? 2 : 1);
+    const after = levelOf(a).level;
+    if (after <= before) return 0;
+    if (ev) ev.push({ type: 'level', level: after, tierBefore, tierAfter: tierOf(a) });
+    return after;
+  }
+
+  /** Today's quests. Ranking up mid-day keeps today's set; the new tier applies tomorrow. */
+  function ensureQuests(a, t, ev) {
+    const day = dayKey(t);
+    if (a.econ.quests.day === day) return;
+    // Yesterday's finished-but-unclaimed quests are paid, not lost.
+    const old = a.econ.quests;
+    let owed = 0, xp = 0;
+    for (const q of old.list || []) {
+      if (!q.done || q.claimed) continue;
+      const rw = q.reward || questReward(old.tier, t);
+      q.claimed = true; owed += rw.chips; xp += rw.xp;
+    }
+    if (owed) {
+      grant(a, 'quests', owed);
+      addXp(a, xp, t, null);
+      if (ev) ev.push({ type: 'questsPaid', chips: owed, xp });
+    }
+    const tier = tierOf(a);
+    a.econ.quests = { day, tier, list: dailyQuests(day, tier) };
+  }
+
+  /** Pay any vault interest due (credited into the vault). Returns chips paid. */
+  function accrueVault(a, t, ev) {
+    const paid = vaultAccrue(a.econ.vault, dayKey(t), tierOf(a));
+    if (paid) {
+      a.econ.ledger.interest += paid;
+      if (a.rows) a.rows.push({ account: 'vault', amount: paid, kind: 'interest' });
+      if (ev) ev.push({ type: 'interest', chips: paid });
+    }
+    return paid;
+  }
+
+  /**
+   * After every finished round of any game, with facts about the result:
+   * event promos, XP, quest progress. Returns events:
+   *   promo {event, amount} | questDone {i, day, q} | level | questsPaid | interest
+   */
+  function afterRound(a, facts, t) {
+    const ev = [];
+    ensureQuests(a, t, ev);
+    accrueVault(a, t, ev);
+    for (const p of promoFor(facts, t).lines) {
+      grant(a, 'promo', p.amount);
+      ev.push({ type: 'promo', event: p.event, amount: p.amount });
+    }
+    const lvl = [];
+    addXp(a, xpForRound(facts.wagered, facts.minBet), t, lvl);
+    const qs = a.econ.quests;
+    qs.list.forEach((q, i) => {
+      if (advanceQuest(q, facts)) {
+        // The reward is fixed the moment the quest completes (so a Quest Rush
+        // completion stays doubled), but paid only when claimed.
+        q.reward = questReward(qs.tier, t);
+        q.claimed = false;
+        ev.push({ type: 'questDone', i, day: qs.day, q });
+      }
+    });
+    return ev.concat(lvl);
+  }
+
+  /**
+   * Pay one finished quest's reward, exactly once. `day` guards against a
+   * stale button from yesterday's list. Returns { reward, ev } or null.
+   */
+  function claimQuest(a, i, day, t) {
+    const ev = [];
+    ensureQuests(a, t, ev);
+    const qs = a.econ.quests;
+    if (day && day !== qs.day) return null;
+    const q = qs.list[i];
+    if (!q || !q.done || q.claimed) return null;
+    const rw = q.reward || questReward(qs.tier, t);
+    q.claimed = true;
+    grant(a, 'quests', rw.chips);
+    addXp(a, rw.xp, t, ev);
+    return { reward: rw, ev };
+  }
+
+  /** When the Bonus Wheel is next free (ms). Lucky Wheel Saturday halves the wait. */
+  const bonusReadyAt = (a, t) => a.econ.lastBonusSpin + bonusWheelNow(t, tierOf(a)).cooldownMs;
+
+  /** Broke means broke: vault chips count, and so do chips in play at any table. */
+  const rescueReady = (a, inPlay) => a.chips + a.econ.vault.balance < WHEELS.rescue.availableBelow && inPlay === 0;
+
+  /** Spin a wheel if it's available. Returns { idx, chips, mult } or null. */
+  function spin(a, which, t, randInt, inPlay) {
+    let mult = 1;
+    if (which === 'rescue') {
+      if (!rescueReady(a, inPlay)) return null;
+    } else if (which === 'bonus') {
+      if (t.getTime() < bonusReadyAt(a, t)) return null;
+      mult = bonusWheelNow(t, tierOf(a)).mult;
+      a.econ.lastBonusSpin = t.getTime();
+    } else return null;
+    const wheel = WHEELS[which];
+    const idx = spinWheel(wheel, randInt);
+    const chips = slicePrize(wheel.slices[idx], mult);
+    grant(a, which === 'rescue' ? 'rescueWheel' : 'bonusWheel', chips);
+    a.econ.spins.push({ t: t.getTime(), wheel: which, slice: idx, mult, chips });
+    if (a.econ.spins.length > 200) a.econ.spins.splice(0, a.econ.spins.length - 200);
+    return { idx, chips, mult };
+  }
+
+  /** Deposit (+) or withdraw (-). A transfer, not a grant: chips + vault is unchanged. */
+  function moveVault(a, amount, t, ev) {
+    accrueVault(a, t, ev);
+    if (!Number.isInteger(amount) || amount === 0) return false;
+    if (amount > 0 && amount > a.chips) return false;
+    if (amount < 0 && -amount > a.econ.vault.balance) return false;
+    vaultMove(a.econ.vault, amount);
+    a.chips -= amount;
+    if (a.rows) {
+      a.rows.push({ account: 'chips', amount: -amount, kind: 'vault' });
+      a.rows.push({ account: 'vault', amount, kind: 'vault' });
+    }
+    return true;
+  }
+
+  /** Buy a cosmetic at today's price, and equip it. False if it can't be bought now. */
+  function buy(a, id, t) {
+    const it = SHOP_BY_ID[id];
+    const p = shopPrice(id, t);   // today's price, or null if not in rotation
+    if (!it || !p || a.econ.owned.includes(id) || a.chips < p.price) return false;
+    grant(a, 'shop', -p.price);
+    a.econ.owned.push(id);
+    equip(a, id);
+    return true;
+  }
+
+  function equip(a, id) {
+    const it = SHOP_BY_ID[id];
+    if (!it || !a.econ.owned.includes(id)) return false;
+    a.econ.equipped[it.kind] = id;
+    return true;
+  }
+
+  /** Economy facts about a finished blackjack round (the page and the server both build them here). */
+  function bjFacts(r, game, minBet) {
+    const sideNet = Object.values(r.side || {}).reduce((s, sb) => s + sb.returned - sb.bet, 0);
+    return {
+      game, wagered: r.wagered, minBet,
+      mainBet: r.baseBet, mainNet: r.net - sideNet,
+      natural: r.hands.length === 1 && r.hands[0].outcome === 'blackjack',
+      handsWon: r.hands.filter(h => h.outcome === 'win' || h.outcome === 'blackjack').length,
+      doublesWon: r.hands.filter(h => h.doubled && h.outcome === 'win').length,
+      splits: r.hands.length - 1,
+      freeWins: r.hands.filter(h => h.free > 0 && h.outcome === 'win').length,
+      dealer22: !!r.dealer22Push,
+      sideWins: Object.values(r.side || {}).filter(sb => sb.returned > 0).length,
+    };
+  }
+
   const ECON = {
     xpToNext, levelFromXp, xpForRound, QUEST_XP, TIERS, tierIndex,
     BET_LADDER, stepBet,
     WHEELS, wheelTotal, spinWheel, slicePrize, wheelEV, bonusWheelNow,
+    CLOCK_ZONE, CLOCK_NAME, wall, atWall, nextDayStart,
     EVENTS, activeEvents, isActive, upcomingEvents, promoFor,
     QUESTS, QUEST_CHIPS, dayKey, dailyQuests, questText, advanceQuest, questReward,
     VAULT, vaultInterest, vaultAccrue, vaultMove,
     SHOP, SHOP_BY_ID, COLLECTIONS, shopCycle, shopPrice, weekIndex,
+    blankEcon, normalizeEcon, levelOf, tierOf, grant, addXp, ensureQuests, accrueVault, afterRound,
+    claimQuest, bonusReadyAt, rescueReady, spin, moveVault, buy, equip, bjFacts,
   };
 
   if (typeof module === 'object' && module.exports) module.exports = ECON;

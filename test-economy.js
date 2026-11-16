@@ -91,10 +91,40 @@ ok('every slice prize is a whole number at every tier (x lucky)',
   check('spinWheel: each slice gets exactly its weight of raw draws', counts, w.slices.map(s => s.weight));
 }
 
+// Casino clock: one fixed timezone (US Eastern), independent of this machine's.
+{
+  const ids = (iso) => ECON.activeEvents(new Date(iso)).map(e => e.id);
+  // Winter (EST, UTC-5): Wednesday 18 Nov 2026 starts at 05:00Z.
+  check('clock EST: Tue 23:59 ET is not Double XP', ids('2026-11-18T04:59:00Z'), []);
+  check('clock EST: Wed 00:00 ET is Double XP', ids('2026-11-18T05:00:00Z'), ['doubleXp']);
+  check('clock EST: dayKey rolls at midnight ET', [ECON.dayKey(new Date('2026-11-18T04:59:59Z')), ECON.dayKey(new Date('2026-11-18T05:00:00Z'))], ['2026-11-17', '2026-11-18']);
+  // Summer (EDT, UTC-4): Wednesday 15 Jul 2026 starts at 04:00Z.
+  check('clock EDT: Wed 00:00 ET is Double XP', [ids('2026-07-15T03:59:00Z'), ids('2026-07-15T04:00:00Z')], [[], ['doubleXp']]);
+  // atWall inverts wall, including on DST change days (8 Mar and 1 Nov 2026).
+  for (const [y, mo, d, h] of [[2026, 2, 8, 0], [2026, 2, 8, 12], [2026, 10, 1, 0], [2026, 10, 1, 18], [2026, 6, 15, 23]]) {
+    const w = ECON.wall(ECON.atWall(y, mo, d, h));
+    check(`atWall/wall round trip ${y}-${mo + 1}-${d} ${h}:00`, [w.y, w.mo, w.d, w.h, w.mi], [y, mo, d, h, 0]);
+  }
+  check('nextDayStart is the next midnight ET', ECON.nextDayStart(new Date('2026-11-18T12:00:00Z')).toISOString(), '2026-11-19T05:00:00.000Z');
+  // Same answers from a device in any timezone: run the calendar in child
+  // processes with different TZ settings and compare fingerprints.
+  const probe = `const E=require(${JSON.stringify(path.join(__dirname, 'economy.js'))});const o=[];` +
+    `for(let i=0;i<24*21;i++){const t=new Date(Date.UTC(2026,9,26)+i*3600e3+60e3);` +
+    `o.push(E.dayKey(t),E.activeEvents(t).map(e=>e.id).join('+'),E.weekIndex(t),E.shopCycle(t).deal,E.nextDayStart(t).getTime(),` +
+    `E.upcomingEvents(t,2).map(u=>u.start.getTime()).join('/'))}console.log(require('crypto').createHash('sha1').update(o.join('|')).digest('hex'))`;
+  const { execFileSync } = require('child_process');
+  const fp = tz => execFileSync(process.execPath, ['-e', probe], { env: Object.assign({}, process.env, { TZ: tz }) }).toString().trim();
+  const prints = ['UTC', 'Asia/Tokyo', 'America/Los_Angeles', 'Europe/London', 'America/New_York'].map(fp);
+  ok('clock: identical calendar from devices in UTC, Tokyo, LA, London, New York (3 weeks incl. a DST change)', prints.every(p => p === prints[0]));
+  // And TZ really does change local Date getters here (else the check above proves nothing).
+  const localHour = tz => execFileSync(process.execPath, ['-e', 'console.log(new Date(Date.UTC(2026,0,1,12)).getHours())'], { env: Object.assign({}, process.env, { TZ: tz }) }).toString().trim();
+  ok('clock: TZ setting is honoured by this Node (control)', localHour('UTC') === '12' && localHour('Asia/Tokyo') === '21');
+}
+
 // Events: find one date per weekday and check the schedule
 function dateOnWeekday(dow, hour) {
-  const d = new Date(2026, 10, 1, hour);
-  while (d.getDay() !== dow) d.setDate(d.getDate() + 1);
+  let d = ECON.atWall(2026, 10, 1, hour), add = 0;
+  while (ECON.wall(d).dow !== dow) d = ECON.atWall(2026, 10, 1 + ++add, hour);
   return d;
 }
 check('Monday: Quest Rush', ECON.activeEvents(dateOnWeekday(1, 10)).map(e => e.id), ['questRush']);
@@ -184,9 +214,9 @@ ok('shop prices are whole chips', ECON.SHOP.every(s => Number.isInteger(s.price)
 // Rotating shop
 {
   const days = [];
-  for (let i = 0; i < 7 * 12; i++) days.push(new Date(2026, 10, 2 + i, 12));   // 12 weeks from a Monday
+  for (let i = 0; i < 7 * 12; i++) days.push(ECON.atWall(2026, 10, 2 + i, 12));   // 12 weeks from a Monday
   const cyc = days.map(d => ECON.shopCycle(d));
-  check('same date, same shop (deterministic)', JSON.stringify(ECON.shopCycle(new Date(2026, 10, 18, 9))), JSON.stringify(ECON.shopCycle(new Date(2026, 10, 18, 21))));
+  check('same date, same shop (deterministic)', JSON.stringify(ECON.shopCycle(ECON.atWall(2026, 10, 18, 9))), JSON.stringify(ECON.shopCycle(ECON.atWall(2026, 10, 18, 21))));
   ok('deal of the day changes from day to day', new Set(cyc.slice(0, 14).map(c => c.deal)).size > 5);
   ok('spotlight is fixed within a week', cyc.slice(0, 7).every(c => c.spotlight.join() === cyc[0].spotlight.join()));
   ok('spotlight changes between weeks', new Set(cyc.filter((_, i) => i % 7 === 0).map(c => c.spotlight.join())).size > 4);
@@ -199,7 +229,7 @@ ok('shop prices are whole chips', ECON.SHOP.every(s => Number.isInteger(s.price)
      cyc.every((c, i) => ECON.SHOP.filter(s => s.collection).every(s => (ECON.shopPrice(s.id, days[i]) !== null) === (s.collection === c.collection.id))));
   ok('sale prices are whole chips, multiples of 50, and cheaper',
      days.every(d => ECON.SHOP.every(s => { const p = ECON.shopPrice(s.id, d); return !p || (Number.isInteger(p.price) && (p.off === 0 ? p.price === s.price : p.price % 50 === 0 && p.price < s.price)); })));
-  const sun = ECON.shopCycle(new Date(2026, 10, 8, 23, 59)), mon = ECON.shopCycle(new Date(2026, 10, 9, 0, 1));
+  const sun = ECON.shopCycle(ECON.atWall(2026, 10, 8, 23, 59)), mon = ECON.shopCycle(ECON.atWall(2026, 10, 9, 0, 1));
   ok('the week turns over Monday at midnight', sun.collection.id !== mon.collection.id && sun.spotlight.join() !== mon.spotlight.join());
 }
 
@@ -524,7 +554,7 @@ let sessionSummary;
 // 7. Shop rotation through the real page: sale prices charged, rotation enforced
 // ---------------------------------------------------------------------------
 {
-  const clock = { t: new Date(2026, 10, 18, 12).getTime() };
+  const clock = { t: ECON.atWall(2026, 10, 18, 12).getTime() };
   const H = loadPage({ store: new Map(), clock });
   const S = H.S();
   H.econGrant('admin', 1e7);   // enough for any deal, including the priciest titles

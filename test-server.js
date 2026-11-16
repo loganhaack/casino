@@ -240,7 +240,7 @@ async function main() {
       s = r;
       const wc = st.wallets.get('p').chips;
       ok(wc === st.ledgerSum('p'), 'chips == sum(ledger)');
-      const grants = st.ledger.filter(x => x.user === 'p' && x.kind === 'quests').reduce((a, x) => a + x.amount, 0);
+      const grants = st.ledger.filter(x => x.user === 'p' && x.account === 'chips' && !['opening', 'bet', 'payout'].includes(x.kind)).reduce((a, x) => a + x.amount, 0);   // quests, promos, top-ups
       ok(wc === opening + grants + net, `chips ${wc} == opening + grants + game net ${opening + grants + net}`);
       if (fail - f > 20) break;
     }
@@ -252,6 +252,161 @@ async function main() {
     report(`${rounds} rounds, ${requests} requests: ledger identity every request, no shoe/hole card ever sent (XP ${xp}, Lv${s.wallet.rank.level})`, f);
   }
 
+  section('economy online (same ACCOUNT ACTIONS as the page, on a test clock)');
+  {
+    const f = fail;
+    const ECON = require('./economy.js');
+    const TUE = ECON.atWall(2026, 10, 17, 12), WED = ECON.atWall(2026, 10, 18, 12);
+    const FRI_EVE = ECON.atWall(2026, 10, 20, 19), SAT = ECON.atWall(2026, 10, 21, 12);
+    const clockAt = (d) => { const c = { t: d.getTime() }; c.now = () => new Date(c.t); return c; };
+    const identity = (st, u = 'u') => {
+      const w = st.wallets.get(u);
+      return w.chips === st.ledgerSum(u, 'chips') && w.vault === st.ledgerSum(u, 'vault');
+    };
+    const call = (st, c, req, ri) => PLAY.handle(st, 'u', req, { now: c.now, randInt: ri });
+
+    // XP: same seed, same decisions; Wednesday (Double XP) earns exactly twice Tuesday's.
+    const xpOn = async (day) => {
+      const st = memStore(), c = clockAt(day), ri = seededInt(8);
+      await call(st, c, { op: 'state' });
+      let seq = 0;
+      for (let i = 0; i < 20; i++) {
+        let r = await call(st, c, { op: 'deal', table: 'bj', seq, bet: 10 }, ri);
+        seq = r.view.seq;
+        while (r.view.round) { r = await call(st, c, { op: 'act', table: 'bj', seq, action: r.view.legal.stand ? 'stand' : 'decline' }, ri); seq = r.view.seq; }
+      }
+      return st.wallets.get('u').econ.xp;
+    };
+    const xpTue = await xpOn(TUE), xpWed = await xpOn(WED);
+    ok(xpTue > 0 && xpWed === 2 * xpTue, `Double XP Wednesday: ${xpWed} should be 2 x ${xpTue}`);
+
+    // Quests: dealt on first request, completed by play, claimed once, through the ledger.
+    let st = memStore(), c = clockAt(TUE);
+    let s = await call(st, c, { op: 'state' });
+    const qs = s.wallet.econ.quests;
+    ok(qs.day === ECON.dayKey(TUE) && qs.list.length > 0, 'state deals today\'s quests (casino-clock day)');
+    ok(JSON.stringify(qs.list) === JSON.stringify(ECON.dailyQuests(ECON.dayKey(TUE), 0)), 'same quests the page would deal at this rank');
+    const ri = seededInt(77);
+    let seq = 0, done = null;
+    for (let i = 0; i < 400 && !done; i++) {
+      let r = await call(st, c, { op: 'deal', table: i % 2 ? 'fb' : 'bj', seq: st.tables.get('u/' + (i % 2 ? 'fb' : 'bj'))?.seq || 0, bet: 20, side: { perfectPairs: 2 } }, ri);
+      const tb = r.table;
+      while (r.view.round) {
+        const full = st.tables.get('u/' + tb).round;
+        r = await call(st, c, { op: 'act', table: tb, seq: r.view.seq, action: BJ.basicStrategy(full, r.wallet.chips) }, ri);
+      }
+      done = r.events.find(e => e.type === 'questDone');
+      const w = st.wallets.get('u');
+      if (w.chips < 300) await st.commit('u', w.version, { chips: w.chips + 1000, vault: w.vault, econ: w.econ, ledger: [{ account: 'chips', amount: 1000, kind: 'promo' }] });
+    }
+    ok(!!done, 'a quest completed through online play (event sent)');
+    if (done) {
+      const q0 = st.ledgerSum('u');
+      let r = await call(st, c, { op: 'claim', i: done.i, day: done.day });
+      ok(r.ok && r.reward.chips > 0 && st.ledgerSum('u') - q0 === r.reward.chips, 'claim pays the reward through a quests row');
+      ok(st.ledger[st.ledger.length - 1].kind === 'quests', '...recorded as kind quests');
+      r = await call(st, c, { op: 'claim', i: done.i, day: done.day });
+      ok(!r.ok && r.error === 'nothing_to_claim', 'claiming twice is refused');
+      r = await call(st, c, { op: 'claim', i: 'x', day: 5 });
+      ok(!r.ok && r.error === 'bad_request', 'malformed claim refused');
+    }
+    ok(identity(st), 'ledger identity after quests');
+
+    // Day rollover pays finished-but-unclaimed quests, exactly once.
+    {
+      const w = st.wallets.get('u');
+      const e = JSON.parse(JSON.stringify(w.econ));
+      const open = e.quests.list.find(q => !q.done);
+      if (open) { open.done = true; open.progress = open.target; open.claimed = false; open.reward = { chips: 123, xp: 5 }; }
+      await st.commit('u', w.version, { chips: w.chips, vault: w.vault, econ: e, ledger: [] });
+      c.t = WED.getTime();
+      const before = st.ledgerSum('u');
+      const r = await call(st, c, { op: 'state' });
+      ok(r.events.some(x => x.type === 'questsPaid' && x.chips === 123) && st.ledgerSum('u') - before === 123, 'rollover pays unclaimed quests');
+      ok(r.wallet.econ.quests.day === ECON.dayKey(WED), 'rollover deals the new day\'s quests');
+      const again = await call(st, c, { op: 'state' });
+      ok(st.ledgerSum('u') - before === 123 && again.events.length === 0, 'and only once');
+    }
+
+    // Bonus Wheel: free spin, then a cooldown; Lucky Wheel Saturday doubles the prize and halves the wait.
+    {
+      st = memStore(); c = clockAt(TUE);
+      let r = await call(st, c, { op: 'spin', wheel: 'bonus' });
+      ok(r.ok && r.spin.mult === 1 && st.ledger[st.ledger.length - 1].kind === 'bonusWheel', 'bonus spin pays through a bonusWheel row');
+      r = await call(st, c, { op: 'spin', wheel: 'bonus' });
+      ok(!r.ok && r.error === 'not_ready' && /recharges in/.test(r.message), 'second spin refused until it recharges');
+      c.t += ECON.WHEELS.bonus.cooldownMs;
+      ok((await call(st, c, { op: 'spin', wheel: 'bonus' })).ok, 'free again after the cooldown');
+      ok(!(await call(st, c, { op: 'spin', wheel: 'jackpot' })).ok, 'unknown wheel refused');
+      const sat = memStore(), cs = clockAt(SAT);
+      r = await call(sat, cs, { op: 'spin', wheel: 'bonus' });
+      ok(r.ok && r.spin.mult === 2 && r.spin.chips === 2 * ECON.WHEELS.bonus.slices[r.spin.idx].chips, 'Lucky Wheel Saturday pays double');
+      cs.t += ECON.WHEELS.bonus.cooldownMs / 2;
+      ok((await call(sat, cs, { op: 'spin', wheel: 'bonus' })).ok, '...and recharges in half the time');
+      ok(identity(st) && identity(sat), 'ledger identity after spins');
+    }
+
+    // Vault: transfers net to zero; interest is credited into the vault; overdraws refused.
+    {
+      st = memStore(); c = clockAt(TUE);
+      await call(st, c, { op: 'state' });
+      let r = await call(st, c, { op: 'vault', amount: 600 });
+      ok(r.ok && r.wallet.chips === 400 && r.wallet.vault === 600 && st.wallets.get('u').vault === 600, 'deposit 600');
+      ok(!(await call(st, c, { op: 'vault', amount: 401 })).ok, 'deposit more than on hand refused');
+      ok(!(await call(st, c, { op: 'vault', amount: -601 })).ok, 'withdraw more than saved refused');
+      ok(!(await call(st, c, { op: 'vault', amount: 2.5 })).ok, 'fractional amount refused');
+      c.t += 2 * 86400000;   // two days later
+      r = await call(st, c, { op: 'state' });
+      const interest = r.events.find(e => e.type === 'interest');
+      ok(interest && interest.chips > 0 && st.wallets.get('u').vault === 600 + interest.chips, 'interest credited into the vault');
+      ok(st.ledger[st.ledger.length - 1].kind === 'interest' && st.ledger[st.ledger.length - 1].account === 'vault', '...as a vault interest row');
+      r = await call(st, c, { op: 'vault', amount: -100 });
+      ok(r.ok && r.wallet.chips === 500, 'withdraw 100');
+      ok(identity(st), 'ledger identity for chips AND vault');
+      // The vault counts against "broke": 0 on hand but chips saved = no rescue.
+      const w = st.wallets.get('u');
+      await st.commit('u', w.version, { chips: 0, vault: w.vault, econ: w.econ, ledger: [{ account: 'chips', amount: -w.chips, kind: 'shop' }] });
+      r = await call(st, c, { op: 'rescue' });
+      ok(!r.ok && r.error === 'not_broke', 'no rescue while chips sit in the vault');
+    }
+
+    // Shop: today's price through a shop row, owned, equipped; no double buy; can't equip what you don't own.
+    {
+      st = memStore(); c = clockAt(TUE);
+      // Something on sale today that a 51,000-chip test bankroll can afford.
+      const cyc0 = ECON.shopCycle(TUE);
+      const pick = [cyc0.deal, ...cyc0.spotlight, ...ECON.SHOP.map(x => x.id)]
+        .find(id => { const p = ECON.shopPrice(id, TUE); return p && p.price > 0 && p.price <= 50000 && !['felt-green', 'back-blue', 'title-none'].includes(id); });
+      const cyc = { deal: pick }, price = ECON.shopPrice(pick, TUE).price;
+      await st.openWallet('u', 1000);
+      const w = st.wallets.get('u');
+      await st.commit('u', 0, { chips: w.chips + 50000, vault: 0, econ: w.econ, ledger: [{ account: 'chips', amount: 50000, kind: 'promo' }] });
+      let r = await call(st, c, { op: 'buy', id: cyc.deal });
+      ok(r.ok && r.wallet.econ.owned.includes(cyc.deal) && r.wallet.econ.equipped[ECON.SHOP_BY_ID[cyc.deal].kind] === cyc.deal, 'buy the deal of the day: owned and equipped');
+      ok(st.ledger[st.ledger.length - 1].kind === 'shop' && st.ledger[st.ledger.length - 1].amount === -price, `charged the sale price ${price}`);
+      ok(!(await call(st, c, { op: 'buy', id: cyc.deal })).ok, 'buying it again refused');
+      ok(!(await call(st, c, { op: 'buy', id: 'no-such-item' })).ok, 'unknown item refused');
+      ok((await call(st, c, { op: 'equip', id: 'felt-green' })).ok, 'equip something owned');
+      ok(!(await call(st, c, { op: 'equip', id: ECON.SHOP.find(x => x.price > 0 && x.id !== cyc.deal).id })).ok, 'equip something not owned refused');
+      ok(identity(st), 'ledger identity after shopping');
+    }
+
+    // Promo: Blackjack Bonanza (Friday 6pm ET) pays 20% of the main bet on a natural, as a promo row.
+    {
+      st = memStore(); c = clockAt(FRI_EVE);
+      await call(st, c, { op: 'state' });
+      // Stack the shoe: player Ace, dealer 2, player King, dealer 3 (cards as ints: rank 12 = Ace).
+      st.tables.set('u/bj', { shoe: { decks: 6, cards: [12, 0, 11, 1, 5, 6, 7, 8], pos: 0, cut: 1e9, stacked: false }, round: null, last: null, n: 0, seq: 0 });
+      const r = await call(st, c, { op: 'deal', table: 'bj', seq: 0, bet: 100 });
+      const promo = r.events.find(e => e.type === 'promo');
+      ok(r.view.last && r.view.last.hands[0].outcome === 'blackjack', 'stacked natural');
+      ok(promo && promo.amount === 20 && st.ledger.some(x => x.kind === 'promo' && x.amount === 20), 'Bonanza promo +20 on a 100 natural, via a promo row');
+      ok(r.view.last.net === 150, 'the round itself still pays exactly 3:2 (promo is separate)');
+      ok(identity(st), 'ledger identity after promo');
+    }
+    report('Double XP, quests + claim + rollover, Bonus Wheel + Lucky Saturday, vault + interest, shop, Bonanza promo', f);
+  }
+
   section('rescue wheel');
   {
     const f = fail;
@@ -261,7 +416,7 @@ async function main() {
     async function brokeStore(chips, xp = 0) {
       const st = memStore();
       await PLAY.handle(st, 'u', { op: 'state' });
-      await st.commit('u', 0, { chips, vault: 0, econ: { xp }, ledger: [{ account: 'chips', amount: chips - 1000, kind: 'shop' }] });
+      await st.commit('u', st.wallets.get('u').version, { chips, vault: 0, econ: Object.assign(st.wallets.get('u').econ, { xp }), ledger: [{ account: 'chips', amount: chips - 1000, kind: 'shop' }] });
       return st;
     }
     let st = await brokeStore(10);
@@ -272,7 +427,7 @@ async function main() {
     // A round in progress (chips in play) blocks it, even when the wallet is low.
     const st2 = memStore();
     await PLAY.handle(st2, 'u', { op: 'state' });
-    await st2.commit('u', 0, { chips: 18, vault: 0, econ: {}, ledger: [{ account: 'chips', amount: -982, kind: 'shop' }] });
+    await st2.commit('u', st2.wallets.get('u').version, { chips: 18, vault: 0, econ: st2.wallets.get('u').econ, ledger: [{ account: 'chips', amount: -982, kind: 'shop' }] });
     let seq = 0, inPlay = false;
     for (let i = 0; i < 100 && !inPlay; i++) {
       const d = await PLAY.handle(st2, 'u', { op: 'deal', table: 'bj', seq, bet: 10 });
@@ -374,7 +529,7 @@ async function main() {
       await PLAY.handle(st, 'u', { op: 'state' });
       const w = st.wallets.get('u');
       w.econ = { xp };
-      if (chips > w.chips) await st.commit('u', 0, { chips, vault: 0, econ: { xp }, ledger: [{ account: 'chips', amount: chips - w.chips, kind: 'quests' }] });
+      if (chips > w.chips) await st.commit('u', st.wallets.get('u').version, { chips, vault: 0, econ: Object.assign(st.wallets.get('u').econ, { xp }), ledger: [{ account: 'chips', amount: chips - w.chips, kind: 'quests' }] });
       const rnd = mulberry32(5), ri = seededInt(6);
       const out = [];
       let seq = { bj: 0, fb: 0 };

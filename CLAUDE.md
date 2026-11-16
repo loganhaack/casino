@@ -136,11 +136,19 @@ moves chips and renders.
 
 `economy.js` (classic script, `ECON`) holds every economy rule: ranks/XP,
 tiers (table limit + reward multiplier), the bet ladder, both wheels, the
-weekly event calendar, daily quests, and the cosmetics shop. The page's
-economy section only applies those rules.
+weekly event calendar, daily quests, and the cosmetics shop.
 
+- **Account actions** (ACCOUNT ACTIONS in `economy.js`): every change the
+  economy makes (`grant`, `afterRound`, `claimQuest`, `ensureQuests`,
+  `accrueVault`, `spin`, `moveVault`, `buy`, `equip`) is a plain function on
+  an account `{ chips, econ, rows }`. The page runs them offline on
+  `PLAYER` (an adapter over `S.chips` / `S.econ`); the server runs the SAME
+  functions online on the wallet (with `rows` collecting ledger rows). They
+  return events; the page's `econAnnounce()` turns events into messages and
+  notifications. Don't add economy logic to the page or to `logic.js`: add it
+  here, so online and offline can't drift.
 - **Ledger.** Every chip that moves outside a game goes through `econGrant()`
-  into `S.econ.ledger`. `econReconcile()` checks
+  (`ECON.grant`) into `S.econ.ledger`. `econReconcile()` checks
   `chips = opening + game nets + ledger - chips in play` exactly; the Rewards
   tab shows it, and `test-economy.js` asserts it after every step of a long
   simulated session with reloads mid-hand. Never write `S.chips +=` anywhere
@@ -148,8 +156,14 @@ economy section only applies those rules.
 - **Hooks are read-only.** `econAfterRound(facts)` runs after a game has
   settled and receives facts about the result. It must never be called
   before settlement or be given anything that can change it.
-- **Events** come from the local date (no server), so friends in one timezone
-  share them. Promo events pay separate `promo` ledger chips; the Rewards tab
+- **Casino clock.** Every calendar rule (events, quest day, shop week, vault
+  day) runs on ONE fixed timezone, US Eastern (`ECON.CLOCK_ZONE`), via
+  `ECON.wall()` / `ECON.atWall()`. Never read local Date getters
+  (getDay/getHours/getDate...) for an economy rule: the page, the server (UTC)
+  and every device must agree, and a player must not be able to move into an
+  event by changing their clock. `test-economy.js` runs the calendar under
+  several TZ settings and requires identical answers.
+- **Events** follow the casino clock, so every friend shares them. Promo events pay separate `promo` ledger chips; the Rewards tab
   shows each promo's exact effect on the affected bet's return.
 - **Quests** are seeded by date + tier (`dailyQuests`), deterministic, so
   friends at a rank share them. The seeded PRNG there is for quest selection
@@ -203,17 +217,21 @@ economy section only applies those rules.
   `npx supabase functions deploy play --project-ref kavaswxswtkvguzdljyi --use-api --no-verify-jwt`
   (the function checks the token itself). Run `test-server.js` first.
 - **Page online mode** (ONLINE PLAY section of `index.html`): signed in,
-  `TS()` and `bankroll()` point at `ON` (server views) instead of `S`, so the
-  same renderer draws both modes. Online, the page never moves a chip or
-  calls `econAfterRound`; `bjSettle()` only records display stats. Don't
-  write `S.chips` in an online path. An Online/Offline button under the
-  chips switches; Poker and Rewards show an "offline only" panel while
-  online. Display stats/bets persist under `casino.online.v1`.
-- Online so far: blackjack + Free Bet, base XP / table limits, and the
-  Rescue Wheel (`op: 'rescue'`, same `ECON.WHEELS.rescue` odds, shown as a
-  button with its odds listed when an online player is broke). Quests,
-  promos, Double XP, Bonus Wheel, vault, shop are not online yet: events run on
-  the player's local clock and the server is UTC, which needs deciding first.
+  `TS()`, `bankroll()` and `ACCT()` / `E()` point at `ON` (the server's
+  views and wallet) instead of `S`, so the same renderers draw both modes.
+  Online, the page never moves a chip or runs an economy action itself:
+  game clicks go through `onSend`, economy clicks (claim, spin, vault, buy,
+  equip) through `onEcon`; the server runs the action and returns the new
+  wallet plus events, which the page announces. `bjSettle()` only records
+  display stats online. Don't write `S.chips` / `S.econ` in an online path.
+  An Online/Offline button under the chips switches; Three Card Poker shows
+  an "offline only" panel while online. Display stats/bets persist under
+  `casino.online.v1`.
+- Online: Blackjack, Free Bet, XP (incl. Double XP), quests + claiming, event
+  promos, both wheels, vault + interest, shop + equip. Every server request
+  first catches the day up (`ensureQuests`, `accrueVault`). Not online yet:
+  Three Card Poker (`eval3()` lives in `index.html`/`enumerate.js`; it has to
+  move to a shared file first).
 - Step 1 (done): profiles only (name, avatar). Chips still live in the browser.
   Step 2: balances + ledger + dealing move into Edge Functions together. A
   balance column the browser can write is a balance anyone can edit.

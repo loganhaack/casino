@@ -1,26 +1,23 @@
 /*
- * Online table server: the game logic, with no database and no Deno in it.
+ * Online table server: the game and economy logic, with no database and no
+ * Deno in it.
  *
  * It runs the SAME blackjack-core.js / tables.js / economy.js the page runs
  * (the byte-identical copies in ../_shared/, see sync-shared.js), so the
- * server deals and settles exactly the game the harnesses verify. Nothing
- * here computes a payout; BJ.settle() does, as it does in the page.
+ * server deals, settles and rewards exactly as the harnesses verify. Nothing
+ * here computes a payout (BJ.settle() does) or a reward (economy.js's
+ * ACCOUNT ACTIONS do, the same functions the page calls offline).
  *
  * It talks to storage only through a small `store` object, so Node tests can
  * drive it against an in-memory store (test-server.js) and the Deno wrapper
  * (index.ts) plugs in Postgres. The store's commit() must behave like
- * commit_turn() in the wallets migration: refuse unless the balance moved by
- * exactly the sum of the ledger rows, and throw {code: '40001'} if the wallet
- * version is stale.
+ * commit_turn() in the wallets migration: refuse unless each balance moved by
+ * exactly the sum of its ledger rows, and throw {code: '40001'} if the
+ * wallet version is stale.
  *
- * What the player is sent (view functions below): their balance, rank, and
- * each table's round with the dealer's hole card hidden until the round is
- * over. NEVER the shoe. That is the reason dealing moved server-side.
- *
- * Not online yet (next step): quests, event promos, Double XP, Bonus Wheel,
- * vault, shop. (The Rescue Wheel is online: it has no clock in it.) They need the event clock decided first (events run on the player's
- * local time, the server runs on UTC). XP is awarded at the base rate so
- * table limits work.
+ * What the player is sent: their balance, rank and economy state (quests,
+ * vault, wheels, cosmetics: none of it secret), and each table's round with
+ * the dealer's hole card hidden until the round is over. NEVER the shoe.
  *
  * Classic UMD script: Node require()s it; Deno imports the _shared files and
  * then this, and it registers globalThis.PLAY.
@@ -44,6 +41,7 @@
   };
   const SIDE_KEYS = Object.keys(BJ.SIDE_BETS);
   const ACTIONS = ['insure', 'decline', 'hit', 'stand', 'double', 'split'];
+  const OPS = ['state', 'deal', 'act', 'claim', 'claimAll', 'spin', 'rescue', 'vault', 'buy', 'equip'];
   const MAX_RETRIES = 4;
 
   /** An error the player caused (bad bet, stale click). Sent back as-is. */
@@ -51,8 +49,8 @@
     constructor(code, message) { super(message); this.code = code; }
   }
   const refuse = (code, message) => { throw new PlayError(code, message); };
-
   const isWhole = (v) => Number.isInteger(v) && v >= 0;
+  const clone = (x) => JSON.parse(JSON.stringify(x));
 
   function rankOf(econ) {
     const lv = ECON.levelFromXp(econ.xp || 0);
@@ -63,13 +61,18 @@
 
   const emptyTable = () => ({ shoe: null, round: null, last: null, n: 0, seq: 0 });
 
+  function fmtWait(ms) {
+    const m = Math.max(1, Math.ceil(ms / 60000));
+    return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
+  }
+
   /* ------------------------------------------------------------- views -- */
 
   /** A round as the player may see it: no rules blob, hole card hidden until done. */
   function roundView(round) {
     if (!round) return null;
     const { rules, ...rest } = round;
-    const v = JSON.parse(JSON.stringify(rest));
+    const v = clone(rest);
     if (round.phase !== 'done' && v.dealer.length > 1) v.dealer = [v.dealer[0], null];
     return v;
   }
@@ -88,29 +91,29 @@
     };
   }
 
-  function walletView(w) {
-    return { chips: w.chips, vault: w.vault, rank: rankOf(w.econ) };
+  function walletView(a) {
+    return { chips: a.chips, vault: a.econ.vault.balance, rank: rankOf(a.econ), econ: clone(a.econ) };
   }
 
-  /* -------------------------------------------------------------- rules -- */
+  /* -------------------------------------------------------------- games -- */
 
-  /** Settle bookkeeping once BJ has finished a round. Mutates the turn. */
+  /** Settle bookkeeping once BJ has finished a round, then the economy reads the result. */
   function settled(turn, t) {
-    const r = turn.ts.round;
+    const r = turn.ts.round, a = turn.acct;
     if (r.phase !== 'done') return;
     if (r.returned > 0) {
-      turn.ledger.push({ account: 'chips', amount: r.returned, kind: 'payout', table_id: t, ref: turn.ref });
-      turn.chips += r.returned;
+      a.rows.push({ account: 'chips', amount: r.returned, kind: 'payout', table_id: t, ref: turn.ref });
+      a.chips += r.returned;
     }
-    turn.econ.xp = (turn.econ.xp || 0) + ECON.xpForRound(r.wagered, TABLE_RULES.bjMinBet);
     turn.ts.last = r;
     turn.ts.round = null;
     turn.ts.n++;
+    // After settlement, on facts only: XP, quests, promos. Can't touch the round.
+    turn.ev.push(...ECON.afterRound(a, ECON.bjFacts(r, t, TABLE_RULES.bjMinBet), turn.now));
   }
 
   function deal(turn, t, req, randInt) {
-    const rules = TABLES[t];
-    const ts = turn.ts;
+    const rules = TABLES[t], ts = turn.ts, a = turn.acct;
     if (ts.round) refuse('round_in_progress', 'Finish the current round first.');
 
     const bet = req.bet;
@@ -127,12 +130,12 @@
     }
     if (!Number.isInteger(bet) || bet < TABLE_RULES.bjMinBet) refuse('bad_bet', `Minimum bet is ${TABLE_RULES.bjMinBet}.`);
     if (bet % rules.betUnit !== 0) refuse('bad_bet', `Bets must be a multiple of ${rules.betUnit}.`);
-    const limit = rankOf(turn.econ).maxBet;
+    const limit = rankOf(a.econ).maxBet;
     if (Math.max(bet, ...Object.values(side)) > limit) {
       refuse('over_limit', `Your table limit is ${limit.toLocaleString('en-US')} per bet. Rank up to raise it.`);
     }
-    const total = bet + Object.values(side).reduce((a, b) => a + b, 0);
-    if (turn.chips < total) refuse('not_enough_chips', 'Not enough chips for the main bet plus side bets.');
+    const total = bet + Object.values(side).reduce((x, y) => x + y, 0);
+    if (a.chips < total) refuse('not_enough_chips', 'Not enough chips for the main bet plus side bets.');
 
     if (!ts.shoe || ts.shoe.decks !== rules.decks || BJ.needsShuffle(ts.shoe)) {
       ts.shoe = BJ.newShoe(rules, randInt);
@@ -141,45 +144,90 @@
     turn.ref = `${t}:${ts.n + 1}`;
     ts.round = BJ.startRound(ts.shoe, bet, rules, { randInt, side });
     ts.last = null;
-    turn.ledger.push({ account: 'chips', amount: -ts.round.wagered, kind: 'bet', table_id: t, ref: turn.ref });
-    turn.chips -= ts.round.wagered;
+    a.rows.push({ account: 'chips', amount: -ts.round.wagered, kind: 'bet', table_id: t, ref: turn.ref });
+    a.chips -= ts.round.wagered;
     settled(turn, t);
   }
 
   function act(turn, t, req, randInt) {
-    const ts = turn.ts;
-    const r = ts.round;
+    const ts = turn.ts, r = ts.round, a = turn.acct;
     if (!r) refuse('no_round', 'There is no round in progress.');
     if (!ACTIONS.includes(req.action)) refuse('bad_request', 'Unknown action.');
-    if (!BJ.legalActions(r, turn.chips)[req.action]) refuse('illegal', `You can't ${req.action} right now.`);
+    if (!BJ.legalActions(r, a.chips)[req.action]) refuse('illegal', `You can't ${req.action} right now.`);
     turn.ref = `${t}:${ts.n + 1}`;
     const before = r.wagered;
-    BJ.act(r, ts.shoe, req.action, turn.chips, { randInt });
+    BJ.act(r, ts.shoe, req.action, a.chips, { randInt });
     const more = r.wagered - before;
     if (more > 0) {
-      turn.ledger.push({ account: 'chips', amount: -more, kind: 'bet', table_id: t, ref: turn.ref });
-      turn.chips -= more;
+      a.rows.push({ account: 'chips', amount: -more, kind: 'bet', table_id: t, ref: turn.ref });
+      a.chips -= more;
     }
     settled(turn, t);
   }
 
-  /**
-   * Rescue Wheel: same rule and same fixed odds as offline (ECON.WHEELS.rescue,
-   * not scaled by tier): available whenever chips + vault are under
-   * availableBelow and no chips are in play at any table.
-   */
-  async function rescue(store, userId, w, randInt) {
-    const wheel = ECON.WHEELS.rescue;
-    if (w.chips + w.vault >= wheel.availableBelow) {
-      refuse('not_broke', `The Rescue Wheel is for when you're under ${wheel.availableBelow} chips.`);
-    }
+  /* ------------------------------------------------------------ economy -- */
+
+  /** Chips currently in play at any table (they count against "broke"). */
+  async function inPlay(store, userId) {
+    let n = 0;
     for (const t of Object.keys(TABLES)) {
       const ts = await store.table(userId, t);
-      if (ts && ts.round) refuse('round_in_progress', 'Finish your round first: chips in play still count.');
+      if (ts && ts.round) n += ts.round.wagered;
     }
-    const idx = ECON.spinWheel(wheel, randInt || BJ.cryptoRandInt);
-    const chips = ECON.slicePrize(wheel.slices[idx], 1);
-    return { idx, chips };
+    return n;
+  }
+
+  async function economyOp(turn, store, userId, req, randInt) {
+    const a = turn.acct, t = turn.now;
+    switch (req.op) {
+      case 'claim': {
+        if (!Number.isInteger(req.i) || typeof req.day !== 'string') refuse('bad_request', 'Bad claim.');
+        const res = ECON.claimQuest(a, req.i, req.day, t);
+        if (!res) refuse('nothing_to_claim', 'Nothing to claim there (already claimed, or a new day started).');
+        turn.ev.push(...res.ev);
+        turn.extra.reward = res.reward;
+        return;
+      }
+      case 'claimAll': {
+        let chips = 0, n = 0;
+        a.econ.quests.list.forEach((q, i) => {
+          if (!q.done || q.claimed) return;
+          const res = ECON.claimQuest(a, i, a.econ.quests.day, t);
+          if (res) { chips += res.reward.chips; n++; turn.ev.push(...res.ev); }
+        });
+        if (!n) refuse('nothing_to_claim', 'No finished quests to claim.');
+        turn.extra.claimed = { n, chips };
+        return;
+      }
+      case 'rescue':
+      case 'spin': {
+        const which = req.op === 'rescue' ? 'rescue' : req.wheel;
+        if (which !== 'bonus' && which !== 'rescue') refuse('bad_request', 'Unknown wheel.');
+        const played = which === 'rescue' ? await inPlay(store, userId) : 0;
+        const res = ECON.spin(a, which, t, randInt || BJ.cryptoRandInt, played);
+        if (!res) {
+          if (which === 'bonus') refuse('not_ready', `The Bonus Wheel recharges in ${fmtWait(ECON.bonusReadyAt(a, t) - t.getTime())}.`);
+          const below = ECON.WHEELS.rescue.availableBelow;
+          if (a.chips + a.econ.vault.balance < below) refuse('round_in_progress', 'Finish your round first: chips in play still count.');
+          refuse('not_broke', `The Rescue Wheel is for when you're under ${below} chips.`);
+        }
+        turn.extra.spin = res;
+        return;
+      }
+      case 'vault': {
+        if (!Number.isInteger(req.amount) || req.amount === 0) refuse('bad_request', 'Enter a whole number of chips.');
+        if (!ECON.moveVault(a, req.amount, t, turn.ev)) {
+          refuse('bad_amount', req.amount > 0 ? 'You don\'t have that many chips on hand.' : 'There aren\'t that many chips in the vault.');
+        }
+        return;
+      }
+      case 'buy':
+        if (typeof req.id !== 'string' || !ECON.buy(a, req.id, t)) refuse('cant_buy', 'That can\'t be bought right now.');
+        return;
+      case 'equip':
+        if (typeof req.id !== 'string' || !ECON.equip(a, req.id)) refuse('cant_equip', 'You don\'t own that.');
+        return;
+    }
   }
 
   /* ------------------------------------------------------------ handler -- */
@@ -192,73 +240,84 @@
    *   { op: 'state' }
    *   { op: 'deal', table: 'bj'|'fb', seq, bet, side: { perfectPairs, twentyOnePlus3 } }
    *   { op: 'act',  table, seq, action: 'hit'|'stand'|'double'|'split'|'insure'|'decline' }
-   *   { op: 'rescue' }   -> spin: { idx, chips }
+   *   { op: 'claim', i, day }        { op: 'claimAll' }
+   *   { op: 'spin', wheel: 'bonus'|'rescue' }   ({ op: 'rescue' } = spin rescue)
+   *   { op: 'vault', amount }        (+ deposit, - withdraw)
+   *   { op: 'buy', id }              { op: 'equip', id }
+   *
+   * Every response carries `events`: what the economy did (quest done, level
+   * up, promo, interest...), for the page to announce.
    *
    * `seq` is the table's seq from the view the player clicked on. A double
    * click or a second tab sends a stale seq and is refused, so one click can
    * never place two bets.
+   *
+   * opts.randInt / opts.now: injectable RNG and clock, for tests only.
    */
   async function handle(store, userId, req, opts) {
     const randInt = (opts && opts.randInt) || undefined;
+    const clock = (opts && opts.now) || (() => new Date());
     if (!req || typeof req !== 'object') return fail('bad_request', 'Bad request.');
-    if (!['state', 'deal', 'act', 'rescue'].includes(req.op)) return fail('bad_request', 'Unknown op.');
-    if ((req.op === 'deal' || req.op === 'act') && !TABLES[req.table]) return fail('bad_request', 'Unknown table.');
+    if (!OPS.includes(req.op)) return fail('bad_request', 'Unknown op.');
+    const game = req.op === 'deal' || req.op === 'act';
+    if (game && !TABLES[req.table]) return fail('bad_request', 'Unknown table.');
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       let w = await store.wallet(userId);
       if (!w) w = await store.openWallet(userId, TABLE_RULES.startingChips);
+      const now = clock();
+      const econ = ECON.normalizeEcon(clone(w.econ || {}), TABLE_RULES.startingChips);
+      econ.vault.balance = w.vault;   // the column is the truth; econ carries the vault's day tracking
+      const acct = { chips: w.chips, econ, rows: [] };
+      const turn = { acct, now, ev: [], extra: {}, ts: null, ref: null, shuffled: false };
+      const econBefore = JSON.stringify(econ);
 
-      if (req.op === 'state') {
-        const tables = {};
-        for (const t of Object.keys(TABLES)) tables[t] = tableView((await store.table(userId, t)) || emptyTable(), w.chips);
-        return { ok: true, wallet: walletView(w), tables };
-      }
+      // Every request keeps the day current: yesterday's unclaimed quests are
+      // paid, today's set is dealt, vault interest is credited.
+      ECON.ensureQuests(acct, now, turn.ev);
+      ECON.accrueVault(acct, now, turn.ev);
 
-      if (req.op === 'rescue') {
-        let spin;
-        try { spin = await rescue(store, userId, w, randInt); }
-        catch (e) {
-          if (!(e instanceof PlayError)) throw e;
-          return { ok: false, error: e.code, message: e.message, wallet: walletView(w) };
-        }
-        const econ = { ...(w.econ || {}), rescues: ((w.econ && w.econ.rescues) || 0) + 1 };
-        try {
-          await store.commit(userId, w.version, {
-            chips: w.chips + spin.chips, vault: w.vault, econ,
-            ledger: [{ account: 'chips', amount: spin.chips, kind: 'rescueWheel' }],
-          });
-        } catch (e) {
-          if (e && e.code === '40001') continue;
-          throw e;
-        }
-        return { ok: true, wallet: walletView({ ...w, chips: w.chips + spin.chips, econ, version: w.version + 1 }), spin };
-      }
-
-      const t = req.table;
-      const ts = (await store.table(userId, t)) || emptyTable();
-      const turn = { chips: w.chips, econ: { ...(w.econ || {}) }, ts, ledger: [], ref: null, shuffled: false };
+      const t = game ? req.table : null;
       try {
-        if (req.seq !== ts.seq) refuse('stale', 'The table changed (another tab or a double click). Showing the current state.');
-        if (req.op === 'deal') deal(turn, t, req, randInt);
-        else act(turn, t, req, randInt);
+        if (game) {
+          turn.ts = (await store.table(userId, t)) || emptyTable();
+          if (req.seq !== turn.ts.seq) refuse('stale', 'The table changed (another tab or a double click). Showing the current state.');
+          if (req.op === 'deal') deal(turn, t, req, randInt);
+          else act(turn, t, req, randInt);
+          turn.ts.seq++;
+        } else if (req.op !== 'state') {
+          await economyOp(turn, store, userId, req, randInt);
+        }
       } catch (e) {
         if (!(e instanceof PlayError)) throw e;
-        const cur = (await store.table(userId, t)) || emptyTable();
-        return { ok: false, error: e.code, message: e.message, wallet: walletView(w), table: t, view: tableView(cur, w.chips) };
+        // Nothing is saved on a refusal (the day's catch-up waits for the next real action).
+        const cur = { chips: w.chips, econ: ECON.normalizeEcon(clone(w.econ || {}), TABLE_RULES.startingChips) };
+        cur.econ.vault.balance = w.vault;
+        const out = { ok: false, error: e.code, message: e.message, wallet: walletView(cur) };
+        if (game) { out.table = t; out.view = tableView((await store.table(userId, t)) || emptyTable(), w.chips); }
+        return out;
       }
 
-      ts.seq++;
-      try {
-        await store.commit(userId, w.version, {
-          chips: turn.chips, vault: w.vault, econ: turn.econ, ledger: turn.ledger,
-          tableId: t, tableState: ts,
-        });
-      } catch (e) {
-        if (e && e.code === '40001') continue;   // someone else committed first; start over
-        throw e;
+      const changed = game || acct.rows.length > 0 || JSON.stringify(econ) !== econBefore;
+      if (changed) {
+        try {
+          await store.commit(userId, w.version, {
+            chips: acct.chips, vault: econ.vault.balance, econ, ledger: acct.rows,
+            tableId: t, tableState: game ? turn.ts : undefined,
+          });
+        } catch (e) {
+          if (e && e.code === '40001') continue;   // someone else committed first; start over
+          throw e;
+        }
       }
-      const nw = { ...w, chips: turn.chips, econ: turn.econ, version: w.version + 1 };
-      return { ok: true, wallet: walletView(nw), table: t, view: tableView(ts, nw.chips), shuffled: turn.shuffled };
+
+      const out = Object.assign({ ok: true, wallet: walletView(acct), events: turn.ev }, turn.extra);
+      if (req.op === 'state') {
+        out.tables = {};
+        for (const k of Object.keys(TABLES)) out.tables[k] = tableView((await store.table(userId, k)) || emptyTable(), acct.chips);
+      }
+      if (game) { out.table = t; out.view = tableView(turn.ts, acct.chips); out.shuffled = turn.shuffled; }
+      return out;
     }
     return fail('busy', 'The server was busy with another request. Try again.');
   }

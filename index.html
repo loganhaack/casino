@@ -721,8 +721,8 @@
   <section id="game-offonly" hidden>
     <div class="panel">
       <h3>Offline only, for now</h3>
-      <p>You're playing online. So far that covers Blackjack and Free Bet: your chips and the cards live on the server, so nobody can edit them.
-      Three Card Poker, the wheels, quests and the vault still run on this browser's chips.</p>
+      <p>You're playing online: Blackjack, Free Bet, the wheels, quests, vault and shop all run on the server, so nobody can edit your chips or see the cards.
+      Three Card Poker isn't online yet; it still runs on this browser's chips.</p>
       <p><button class="btn-sm" id="offonlyBtn">Switch to offline play</button>
       <span class="sub">Your online chips stay safe on the server; switch back any time with the button under your chips.</span></p>
     </div>
@@ -1071,18 +1071,11 @@ const blankState = () => ({
 // in econ.ledger, so the bankroll can always be reconciled exactly:
 //   chips = opening + game nets + sum(ledger) - chips currently in play
 function blankEcon() {
-  return {
-    xp: 0,
-    lastBonusSpin: 0,
-    quests: { day: '', tier: -1, list: [] },
-    owned: ['felt-green', 'back-blue', 'title-none'],
-    equipped: { felt: 'felt-green', back: 'back-blue', title: 'title-none' },
-    ledger: { opening: RULES.startingChips, bonusWheel: 0, rescueWheel: 0, quests: 0, promo: 0, interest: 0, shop: 0, admin: 0 },
-    vault: { balance: 0, day: '', minToday: 0 },   // saved chips: can't be bet, earn capped daily interest
-    spins: [],    // recent wheel results, newest last (capped)
+  // Shape lives in economy.js (shared with the server); notes/seen are this page's UI.
+  return Object.assign(ECON.blankEcon(RULES.startingChips), {
     notes: [],    // notifications, newest last (capped). UI only: never decides anything
     seen: {},     // notification de-dupe keys (e.g. which bonus-wheel readiness was announced)
-  };
+  });
 }
 
 // Blackjack state. Added alongside the TCP fields (older saves get these
@@ -1882,19 +1875,8 @@ function bjSettle(r, prefix) {
   TS().round = null;
 
   /* ---- economy: XP, quests, event promos. Reads the result; can't change it. ---- */
-  const sideNet = Object.values(r.side || {}).reduce((a, sb) => a + sb.returned - sb.bet, 0);
-  // Online rounds: XP is awarded by the server; quests/promos aren't online yet.
-  const econLines = on ? [] : econAfterRound({
-    game: bjTable, wagered: r.wagered, minBet: RULES.bjMinBet,
-    mainBet: r.baseBet, mainNet: r.net - sideNet,
-    natural: r.hands.length === 1 && r.hands[0].outcome === 'blackjack',
-    handsWon: r.hands.filter(h => h.outcome === 'win' || h.outcome === 'blackjack').length,
-    doublesWon: r.hands.filter(h => h.doubled && h.outcome === 'win').length,
-    splits: r.hands.length - 1,
-    freeWins: r.hands.filter(h => h.free > 0 && h.outcome === 'win').length,
-    dealer22: !!r.dealer22Push,
-    sideWins: Object.values(r.side || {}).filter(sb => sb.returned > 0).length,
-  });
+  // Online, the server already ran the same afterRound(); here we just announce what it did.
+  const econLines = on ? econAnnounce(ON.events.splice(0)) : econAfterRound(ECON.bjFacts(r, bjTable, RULES.bjMinBet));
   if (econLines.length) $('bjMsg').innerHTML += '<br>' + econLines.join('<br>');
   $('bjMsg').innerHTML += on ? onBrokeHint() : econRescueHint();
   if (TS().bet > bankroll()) TS().bet = RULES.bjMinBet;
@@ -2195,12 +2177,12 @@ function showGame(g) {
   const isBj = !!BJ_TABLES[S.game];
   $('game-bj').hidden = !isBj;
   // Online play covers the blackjack tables so far; the rest uses browser chips.
-  const offOnly = online() && (S.game === 'tcp' || S.game === 'rewards');
+  const offOnly = online() && S.game === 'tcp';
   $('game-tcp').hidden = S.game !== 'tcp' || offOnly;
-  $('game-rewards').hidden = S.game !== 'rewards' || offOnly;
+  $('game-rewards').hidden = S.game !== 'rewards';
   $('game-offonly').hidden = !offOnly;
   $('game-home').hidden = S.game !== 'home';
-  if (S.game === 'rewards' && !offOnly) econRenderRewards();
+  if (S.game === 'rewards') econRenderRewards();
   if (S.game === 'home') renderHome();
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.game === S.game));
   if (isBj) {
@@ -2222,46 +2204,55 @@ function showGame(g) {
 
 const now = () => new Date(Date.now());   // one clock, so tests can move time
 
-const econLevel = () => ECON.levelFromXp(S.econ.xp);
-const econTier = () => ECON.tierIndex(econLevel().level);
-const econMaxBet = () => (online() ? ON.wallet.rank.maxBet : ECON.TIERS[econTier()].maxBet);
+/* The player's economy account: S.chips / S.econ seen through the shape the
+ * shared ACCOUNT ACTIONS in economy.js work on. Those functions make every
+ * change; this section only announces and redraws. */
+const PLAYER = {
+  get chips() { return S.chips; }, set chips(v) { S.chips = v; },
+  get econ() { return S.econ; },
+};
+/* Online, the same reads come from the server's wallet. It's read-only here:
+ * every online change is made by the server, running these same actions. */
+const ONLINE_ACCT = { get chips() { return ON.wallet.chips; }, get econ() { return ON.wallet.econ; } };
+const ACCT = () => (online() ? ONLINE_ACCT : PLAYER);
+const E = () => ACCT().econ;   // the active economy state (offline save, or the server's)
+
+const econLevel = () => ECON.levelOf(ACCT());
+const econTier = () => ECON.tierOf(ACCT());
+const econMaxBet = () => ECON.TIERS[econTier()].maxBet;
 
 /** The ONLY way chips enter or leave outside a game. Recorded in the ledger. */
-function econGrant(kind, amount) {
-  if (!Number.isInteger(amount)) throw new Error('Ledger amounts must be whole chips: ' + amount);
-  if (kind === 'opening' || !(kind in S.econ.ledger)) throw new Error('Unknown ledger entry: ' + kind);
-  S.chips += amount;
-  S.econ.ledger[kind] += amount;
-}
+function econGrant(kind, amount) { ECON.grant(PLAYER, kind, amount); }
 
-/** Add XP (doubled during Double XP). Returns the new level if it went up, else 0. */
-function econAddXp(base) {
-  const before = econLevel().level;
-  S.econ.xp += base * (ECON.isActive(now(), 'doubleXp') ? 2 : 1);
-  const after = econLevel().level;
-  return after > before ? after : 0;
-}
-
-/** Today's quests. Ranking up mid-day keeps today's set; new tier applies tomorrow. */
-function econEnsureQuests() {
-  const day = ECON.dayKey(now());
-  if (S.econ.quests.day !== day) {
-    // Yesterday's finished-but-unclaimed quests are paid, not lost.
-    const old = S.econ.quests;
-    let owed = 0, xp = 0;
-    for (const q of old.list || []) {
-      if (!q.done || q.claimed) continue;
-      const rw = q.reward || ECON.questReward(old.tier, now());
-      q.claimed = true; owed += rw.chips; xp += rw.xp;
+/** Turn economy events into notifications; returns the message lines for a round. */
+function econAnnounce(ev) {
+  const lines = [];
+  for (const e of ev) {
+    if (e.type === 'promo') {
+      lines.push(`<span class="win">${e.event.name} promo: +${e.amount.toLocaleString()}</span>`);
+    } else if (e.type === 'questDone') {
+      lines.push(`<span class="win">Quest complete: ${ECON.questText(e.q)}. Claim ${e.q.reward.chips.toLocaleString()} chips from the bell or Home.</span>`);
+      notify('quest', 'Quest complete', `${ECON.questText(e.q)}: ${e.q.reward.chips.toLocaleString()} chips + ${e.q.reward.xp} XP waiting.`,
+        { type: 'claim', day: e.day, i: e.i });
+    } else if (e.type === 'level') {
+      lines.push(econLevelUpNote(e));
+    } else if (e.type === 'questsPaid') {
+      notify('quest', 'Unclaimed quests paid', `Yesterday's finished quests: +${e.chips.toLocaleString()} chips, +${e.xp} XP.`);
+    } else if (e.type === 'interest') {
+      notify('vault', 'Vault interest paid', `+${e.chips.toLocaleString()} chips into your vault.`, { type: 'go', tab: 'rewards' });
     }
-    if (owed) {
-      econGrant('quests', owed);
-      econAddXp(xp);
-      notify('quest', 'Unclaimed quests paid', `Yesterday's finished quests: +${owed.toLocaleString()} chips, +${xp} XP.`);
-    }
-    const tier = econTier();
-    S.econ.quests = { day, tier, list: ECON.dailyQuests(day, tier) };
   }
+  return lines;
+}
+
+/** Today's quests (pays yesterday's unclaimed ones first). */
+function econEnsureQuests() {
+  if (online()) {   // the server keeps the day current; ask once if ours looks stale
+    const day = ECON.dayKey(now());
+    if (E().quests.day !== day && ON.syncedDay !== day) { ON.syncedDay = day; onEcon({ op: 'state' }); }
+    return;
+  }
+  const ev = []; ECON.ensureQuests(PLAYER, now(), ev); econAnnounce(ev);
 }
 
 /**
@@ -2269,31 +2260,7 @@ function econEnsureQuests() {
  * result. Awards XP, quest progress and event promos. Returns message lines.
  */
 function econAfterRound(facts) {
-  econEnsureQuests();
-  econAccrueVault();
-  const t = now();
-  const lines = [];
-  const tierBefore = econTier();
-
-  for (const p of ECON.promoFor(facts, t).lines) {
-    econGrant('promo', p.amount);
-    lines.push(`<span class="win">${p.event.name} promo: +${p.amount.toLocaleString()}</span>`);
-  }
-
-  const leveled = econAddXp(ECON.xpForRound(facts.wagered, facts.minBet));
-  const qTier = S.econ.quests.tier;
-  S.econ.quests.list.forEach((q, i) => {
-    if (ECON.advanceQuest(q, facts)) {
-      // The reward is fixed the moment the quest completes (so a Quest Rush
-      // completion stays doubled), but paid only when claimed.
-      q.reward = ECON.questReward(qTier, t);
-      q.claimed = false;
-      lines.push(`<span class="win">Quest complete: ${ECON.questText(q)}. Claim ${q.reward.chips.toLocaleString()} chips from the bell or Home.</span>`);
-      notify('quest', 'Quest complete', `${ECON.questText(q)}: ${q.reward.chips.toLocaleString()} chips + ${q.reward.xp} XP waiting.`,
-        { type: 'claim', day: S.econ.quests.day, i });
-    }
-  });
-  if (leveled) lines.push(econLevelUpNote(leveled, tierBefore));
+  const lines = econAnnounce(ECON.afterRound(PLAYER, facts, now()));
   if (econRescueReady() && !S.econ.seen.rescue) {
     S.econ.seen.rescue = true;
     notify('rescue', 'Rescue Wheel unlocked', `You're under ${ECON.WHEELS.rescue.availableBelow} chips. It's free, as often as you need it.`, { type: 'go', tab: 'rewards' });
@@ -2305,14 +2272,13 @@ function econAfterRound(facts) {
 }
 
 /** Message line for a level up, plus a notification. */
-function econLevelUpNote(level, tierBefore) {
-  const tierAfter = econTier();
-  const up = tierAfter > tierBefore;
-  notify('level', up ? `${ECON.TIERS[tierAfter].name} unlocked` : `Level ${level}`,
-    up ? `Level ${level}. Table limit ${ECON.TIERS[tierAfter].maxBet.toLocaleString()}, bigger wheel prizes and quests.`
-       : `You reached level ${level}.`, { type: 'go', tab: 'home' });
-  return `<span class="win">Level up: you're level ${level}` +
-    (up ? `, now ${ECON.TIERS[tierAfter].name}! Table limit ${ECON.TIERS[tierAfter].maxBet.toLocaleString()}, ` +
+function econLevelUpNote(e) {
+  const up = e.tierAfter > e.tierBefore, tier = ECON.TIERS[e.tierAfter];
+  notify('level', up ? `${tier.name} unlocked` : `Level ${e.level}`,
+    up ? `Level ${e.level}. Table limit ${tier.maxBet.toLocaleString()}, bigger wheel prizes and quests.`
+       : `You reached level ${e.level}.`, { type: 'go', tab: 'home' });
+  return `<span class="win">Level up: you're level ${e.level}` +
+    (up ? `, now ${tier.name}! Table limit ${tier.maxBet.toLocaleString()}, ` +
       `bigger wheel prizes and quests.` : '.') + '</span>';
 }
 
@@ -2334,12 +2300,12 @@ function renderHome() {
   econEnsureQuests();
   const t = now();
   const lv = econLevel(), ti = econTier(), tier = ECON.TIERS[ti], next = ECON.TIERS[ti + 1];
-  const vault = S.econ.vault.balance;
+  const vault = E().vault.balance;
   $('homeRank').innerHTML =
     `<h3>Your bankroll</h3>` +
-    `<div class="big">${S.chips.toLocaleString()}</div>` +
-    `<div class="sub">chips on hand${vault ? ` &middot; ${vault.toLocaleString()} in the vault &middot; ${(S.chips + vault).toLocaleString()} total` : ''}</div>` +
-    pileHTML(S.chips, { max: 6 }) +
+    `<div class="big">${bankroll().toLocaleString()}</div>` +
+    `<div class="sub">chips on hand${vault ? ` &middot; ${vault.toLocaleString()} in the vault &middot; ${(bankroll() + vault).toLocaleString()} total` : ''}</div>` +
+    pileHTML(bankroll(), { max: 6 }) +
     `<div style="margin-top:6px"><strong>Level ${lv.level}</strong> <span class="tier" style="font-size:11px;padding:1px 7px;border-radius:9px;background:rgba(232,197,71,.15);color:var(--chip)">${tier.name}</span>` +
     ` <span class="sub">table limit ${tier.maxBet.toLocaleString()}</span></div>` +
     `<div class="xpbar"><div style="width:${(100 * lv.into / lv.need).toFixed(1)}%"></div></div>` +
@@ -2350,9 +2316,9 @@ function renderHome() {
   const todo = [];
   const un = econUnclaimed();
   for (const { q, i } of un) {
-    const r = q.reward || ECON.questReward(S.econ.quests.tier, t);
+    const r = q.reward || ECON.questReward(E().quests.tier, t);
     todo.push(`<div class="item2"><span class="ic">${NOTE_ICON.quest}</span><div class="tx"><strong>Quest reward</strong>${ECON.questText(q)}</div>` +
-      `<button class="btn-sm" data-claim="${i}" data-day="${S.econ.quests.day}">Claim ${r.chips.toLocaleString()}</button></div>`);
+      `<button class="btn-sm" data-claim="${i}" data-day="${E().quests.day}">Claim ${r.chips.toLocaleString()}</button></div>`);
   }
   if (un.length > 1) todo.push(`<button class="btn-sm" data-claimall="1">Claim all ${un.length}</button>`);
   const bonusWait = econBonusReadyAt() - t.getTime();
@@ -2368,7 +2334,7 @@ function renderHome() {
     todo.push(`<div class="item2"><span class="ic">${NOTE_ICON.event}</span><div class="tx"><strong>${e.name}</strong>${e.desc}</div></div>`);
   }
   const cyc = ECON.shopCycle(t), deal = ECON.SHOP_BY_ID[cyc.deal];
-  if (!S.econ.owned.includes(deal.id)) {
+  if (!E().owned.includes(deal.id)) {
     todo.push(`<div class="item2"><span class="ic">${NOTE_ICON.chips}</span><div class="tx"><strong>Deal of the Day</strong>` +
       `${deal.name} ${deal.kind}, ${ECON.shopPrice(deal.id, t).price.toLocaleString()} chips (40% off). Collection this week: ${cyc.collection.name}.</div>` +
       `<button class="btn-sm ghost" data-go="rewards">Shop</button></div>`);
@@ -2386,7 +2352,7 @@ function renderHome() {
       `<span class="btn-sm go">Play</span></button>`;
   }).join('');
 
-  const qs = S.econ.quests;
+  const qs = E().quests;
   const rw = ECON.questReward(qs.tier, t);
   $('homeQuests').innerHTML = qs.list.map((q, i) => {
     const r = q.reward || rw;
@@ -2663,7 +2629,9 @@ async function onBoot() {
   if (ON && ON.user === auth.user.id && ON.wallet) return;
   const p = onPrefs();
   const mine = p.user === auth.user.id ? p : {};
-  ON = { user: auth.user.id, on: mine.on !== false, wallet: null, busy: false, ts: {} };
+  ON = { user: auth.user.id, on: mine.on !== false, wallet: null, busy: false, ts: {},
+         events: [],        // economy events from the last game response, announced at settlement
+         syncedDay: '' };   // last day we asked the server to roll the quests over
   for (const t of ONLINE_GAMES) {
     const b = blankBj();
     if (mine[t]) { b.bet = mine[t].bet || b.bet; b.side = mine[t].side || b.side; b.stats = mine[t].stats || b.stats; b.history = mine[t].history || []; }
@@ -2675,6 +2643,7 @@ async function onBoot() {
     if (!d.ok) throw new Error(d.message);
     ON.wallet = d.wallet;
     for (const t of ONLINE_GAMES) onApply(t, d.tables[t]);
+    econAnnounce(d.events || []);   // e.g. yesterday's unclaimed quests, vault interest
   } catch (e) {
     toast('info', 'Online play unavailable', 'Couldn\'t reach the table server, so the tables are using this browser\'s chips. Reload to try again.');
   }
@@ -2695,7 +2664,7 @@ function onToggle() {
   onSave();
   onRefreshUI();
   toast('info', ON.on ? 'Playing online' : 'Playing offline',
-    ON.on ? 'Blackjack and Free Bet use your server chips.' : 'Every table uses this browser\'s chips. Your online chips are safe on the server.');
+    ON.on ? 'Blackjack, Free Bet and Rewards use your server chips.' : 'Every table uses this browser\'s chips. Your online chips are safe on the server.');
 }
 
 function renderMode() {
@@ -2706,8 +2675,8 @@ function renderMode() {
   b.classList.toggle('on', online());
   b.textContent = online() ? '● Online' : '○ Offline';
   b.title = online()
-    ? 'Blackjack and Free Bet deal on the server, with server chips. Click to play offline with this browser\'s chips.'
-    : 'Playing with this browser\'s chips. Click to play Blackjack and Free Bet online.';
+    ? 'Blackjack, Free Bet and Rewards run on the server, with server chips. Click to play offline with this browser\'s chips.'
+    : 'Playing with this browser\'s chips. Click to play online.';
   $('bankLbl').textContent = online() ? 'online chips' : 'chips';
 }
 
@@ -2716,8 +2685,38 @@ function onRefreshUI() {
   for (const t of ONLINE_GAMES) delete bjShown[t];   // don't animate from the other mode's cards
   railShown = null;
   if (BJ_TABLES[S.game]) $('bjMsg').textContent = online() ? 'Playing online: your chips and the cards are on the server.' : '';
-  renderBank(); econRenderHeader(); renderMode();
+  renderBank(); econRenderHeader(); renderMode(); applyCosmetics(); renderNotes();
   showGame(S.game);
+}
+
+/** Chips in play at the online tables (they count against "broke"). */
+function onInPlay() {
+  return ONLINE_GAMES.reduce((n, t) => n + (ON.ts[t].round ? ON.ts[t].round.wagered : 0), 0);
+}
+
+/**
+ * One online economy action (claim, spin, vault, buy, equip, or a state
+ * refresh). The server runs the same economy.js action and returns the new
+ * wallet plus what happened; the page applies, announces and redraws.
+ * Resolves to the server's reply, or null if it couldn't be sent.
+ */
+async function onEcon(body) {
+  if (!online() || ON.busy) return null;
+  ON.busy = true;
+  let d;
+  try { d = await onCall(body); }
+  catch (e) { d = { ok: false, message: 'Connection problem. Try again.' }; }
+  if (!ON) return null;
+  ON.busy = false;
+  if (d.error === 'signed_out') { onStop(); return d; }
+  if (d.wallet) ON.wallet = d.wallet;
+  econAnnounce(d.events || []);
+  railShown = null;
+  renderBank(); econRenderHeader(); applyCosmetics(); renderNotes();
+  if (S.game === 'rewards') econRenderRewards();
+  if (S.game === 'home') renderHome();
+  if (!d.ok && d.message && S.game === 'rewards') $('rewardsMsg').textContent = d.message;
+  return d;
 }
 
 /** The Rescue Wheel's published odds, from ECON (the server spins the same wheel). */
@@ -2737,16 +2736,8 @@ function onBrokeHint() {
 
 /** Online Rescue Wheel: the server decides eligibility, spins, and pays it through the ledger. */
 async function onRescue() {
-  if (!online() || ON.busy) return;
-  ON.busy = true;
-  let d;
-  try { d = await onCall({ op: 'rescue' }); }
-  catch (e) { d = { ok: false, message: 'Connection problem. Try again.' }; }
-  if (!ON) return;
-  ON.busy = false;
-  if (d.wallet) ON.wallet = d.wallet;
-  railShown = null;
-  renderBank(); econRenderHeader();
+  const d = await onEcon({ op: 'spin', wheel: 'rescue' });
+  if (!d) return;
   if (d.ok) {
     toast('rescue', 'Rescue Wheel', `+${d.spin.chips} chips. Back to the table!`);
     if (BJ_TABLES[S.game]) { $('bjMsg').textContent = `Rescue Wheel: +${d.spin.chips} chips.`; bjRender(); }
@@ -2809,14 +2800,15 @@ async function onSend(body, onOk) {
   if (onOk) onOk();
   const prefix = d.shuffled ? 'New shoe shuffled. ' : '';
   const ts = ON.ts[t];
-  if (ts.round) { bjAfter(prefix); onSave(); }
+  ON.events = d.events || [];   // what the economy did; bjSettle announces it with the result
+  if (ts.round) { econAnnounce(ON.events.splice(0)); bjAfter(prefix); onSave(); }
   else if (ts.last) bjSettle(ts.last, prefix);   // records display stats, draws the result
 }
 
 /* ---------- quest claiming ---------- */
 
 /** Quests finished and not yet claimed: [{ q, i }]. */
-const econUnclaimed = () => S.econ.quests.list.map((q, i) => ({ q, i })).filter(x => x.q.done && !x.q.claimed);
+const econUnclaimed = () => E().quests.list.map((q, i) => ({ q, i })).filter(x => x.q.done && !x.q.claimed);
 
 /**
  * Pay one finished quest's reward, exactly once, through the ledger.
@@ -2824,26 +2816,20 @@ const econUnclaimed = () => S.econ.quests.list.map((q, i) => ({ q, i })).filter(
  * reward, or null if there was nothing to claim.
  */
 function econClaimQuest(i, day) {
-  econEnsureQuests();
-  const qs = S.econ.quests;
-  if (day && day !== qs.day) return null;
-  const q = qs.list[i];
-  if (!q || !q.done || q.claimed) return null;
-  const rw = q.reward || ECON.questReward(qs.tier, now());
-  const tierBefore = econTier();
-  q.claimed = true;
-  econGrant('quests', rw.chips);
-  const leveled = econAddXp(rw.xp);
-  if (leveled) econLevelUpNote(leveled, tierBefore);
-  econResolveNotes(n => n.action && n.action.type === 'claim' && n.action.day === qs.day && n.action.i === i);
+  if (online()) return onEcon({ op: 'claim', i, day }).then(d => (d && d.ok ? d.reward : null));
+  const res = ECON.claimQuest(PLAYER, i, day, now());
+  if (!res) { save(); return null; }
+  econAnnounce(res.ev);
+  econResolveNotes(n => n.action && n.action.type === 'claim' && n.action.day === E().quests.day && n.action.i === i);
   save();
   renderBank(); econRenderHeader(); renderNotes();
   if (S.game === 'rewards') econRenderRewards();
   if (S.game === 'home') renderHome();
-  return rw;
+  return res.reward;
 }
 
 function econClaimAll() {
+  if (online()) return onEcon({ op: 'claimAll' }).then(d => (d && d.ok ? d.claimed.chips : 0));
   let chips = 0;
   for (const { i } of econUnclaimed()) { const rw = econClaimQuest(i); if (rw) chips += rw.chips; }
   return chips;
@@ -2851,14 +2837,12 @@ function econClaimAll() {
 
 /** Button handler: claim, then celebrate with a toast. */
 function claimClick(i, day) {
-  const rw = econClaimQuest(i, day);
-  if (rw) toast('chips', 'Claimed', `+${rw.chips.toLocaleString()} chips, +${rw.xp} XP`);
+  Promise.resolve(econClaimQuest(i, day)).then(rw => { if (rw) toast('chips', 'Claimed', `+${rw.chips.toLocaleString()} chips, +${rw.xp} XP`); });
 }
 
 function claimAllClick() {
   const n = econUnclaimed().length;
-  const chips = econClaimAll();
-  if (chips) toast('chips', `Claimed ${n} quest${n > 1 ? 's' : ''}`, `+${chips.toLocaleString()} chips`);
+  Promise.resolve(econClaimAll()).then(chips => { if (chips) toast('chips', `Claimed ${n} quest${n > 1 ? 's' : ''}`, `+${chips.toLocaleString()} chips`); });
 }
 
 /* ===========================================================================
@@ -2891,7 +2875,7 @@ function econResolveNotes(match) {
 function noteActionHTML(n) {
   if (!n.action || n.done) return '';
   if (n.action.type === 'claim') {
-    const q = S.econ.quests.day === n.action.day && S.econ.quests.list[n.action.i];
+    const q = E().quests.day === n.action.day && E().quests.list[n.action.i];
     if (!q || q.claimed) return '';
     return `<button class="btn-sm" data-claim="${n.action.i}" data-day="${n.action.day}">Claim</button>`;
   }
@@ -2960,7 +2944,7 @@ function econCheckTimers() {
   const readyAt = econBonusReadyAt();
   if (t.getTime() >= readyAt && S.econ.seen.bonus !== readyAt) {
     S.econ.seen.bonus = readyAt;
-    if (S.econ.lastBonusSpin) notify('wheel', 'Bonus Wheel ready', 'Your free spin is back.', { type: 'go', tab: 'rewards' });
+    if (E().lastBonusSpin) notify('wheel', 'Bonus Wheel ready', 'Your free spin is back.', { type: 'go', tab: 'rewards' });
   }
   const day = ECON.dayKey(t);
   const evs = Array.isArray(S.econ.seen.events) ? S.econ.seen.events : (S.econ.seen.events = []);
@@ -2977,7 +2961,7 @@ function econCheckTimers() {
   if (!evs.includes(dealKey)) {
     evs.push(dealKey);
     const it = ECON.SHOP_BY_ID[cyc.deal], p = ECON.shopPrice(cyc.deal, t);
-    if (!S.econ.owned.includes(it.id)) notify('chips', 'Deal of the Day', `${it.name} (${it.kind}) is 40% off: ${p.price.toLocaleString()} chips today.`, { type: 'go', tab: 'rewards' });
+    if (!E().owned.includes(it.id)) notify('chips', 'Deal of the Day', `${it.name} (${it.kind}) is 40% off: ${p.price.toLocaleString()} chips today.`, { type: 'go', tab: 'rewards' });
   }
   if (!evs.includes(collKey)) {
     evs.push(collKey);
@@ -2991,9 +2975,9 @@ function econCheckTimers() {
 /* ---------- wheels ---------- */
 
 // Broke means broke: chips in the vault count, so stashing them doesn't unlock a rescue.
-const econRescueReady = () => S.chips + S.econ.vault.balance < ECON.WHEELS.rescue.availableBelow && chipsInPlay(S) === 0;
+const econRescueReady = () => ECON.rescueReady(ACCT(), online() ? onInPlay() : chipsInPlay(S));
 const econBonusNow = () => ECON.bonusWheelNow(now(), econTier());
-const econBonusReadyAt = () => S.econ.lastBonusSpin + econBonusNow().cooldownMs;
+const econBonusReadyAt = () => ECON.bonusReadyAt(ACCT(), now());
 
 function econRescueHint() {
   return econRescueReady()
@@ -3007,23 +2991,9 @@ function econRescueHint() {
  * granted through the ledger, and saved BEFORE any animation plays.
  */
 function econSpin(which) {
-  const t = now();
-  let mult = 1;
-  if (which === 'rescue') {
-    if (!econRescueReady()) return null;
-  } else if (which === 'bonus') {
-    if (t.getTime() < econBonusReadyAt()) return null;
-    mult = econBonusNow().mult;
-    S.econ.lastBonusSpin = t.getTime();
-  } else return null;
-  const wheel = ECON.WHEELS[which];
-  const idx = ECON.spinWheel(wheel, randInt);
-  const chips = ECON.slicePrize(wheel.slices[idx], mult);
-  econGrant(which === 'rescue' ? 'rescueWheel' : 'bonusWheel', chips);
-  S.econ.spins.push({ t: t.getTime(), wheel: which, slice: idx, mult, chips });
-  if (S.econ.spins.length > 200) S.econ.spins.splice(0, S.econ.spins.length - 200);
-  save();
-  return { idx, chips, mult };
+  const res = ECON.spin(PLAYER, which, now(), randInt, chipsInPlay(S));
+  if (res) save();
+  return res;
 }
 
 const WHEEL_COLORS = ['#e8c547', '#5fd68a', '#e07a5c', '#6fa8dc', '#c38fe0', '#f2a65a', '#4fc1b5', '#f07fa6'];
@@ -3071,6 +3041,17 @@ function econAnimateTo(which, idx, done) {
 
 function econSpinClick(which) {
   if (wheelSpinning) return;
+  if (online()) {   // the server spins (same wheel, same odds); the page animates its result
+    $('rewardsMsg').textContent = 'Spinning…';
+    onEcon({ op: 'spin', wheel: which }).then(d => {
+      if (!d || !d.ok) { $('rewardsMsg').textContent = d ? d.message : ''; return; }
+      econAnimateTo(which, d.spin.idx, () => {
+        $('rewardsMsg').innerHTML = `<span class="win">${ECON.WHEELS[which].name}: +${d.spin.chips.toLocaleString()} chips!</span>`;
+        renderBank(); econRenderRewards();
+      });
+    });
+    return;
+  }
   const res = econSpin(which);
   if (!res) { econRenderRewards(); return; }
   $('rewardsMsg').textContent = 'Spinning…';
@@ -3084,23 +3065,15 @@ function econSpinClick(which) {
 /* ---------- vault ---------- */
 
 /** Pay any interest owed for finished days. Call before any vault move. */
-function econAccrueVault() {
-  const paid = ECON.vaultAccrue(S.econ.vault, ECON.dayKey(now()), econTier());
-  if (paid) {
-    S.econ.ledger.interest += paid;   // credited into the vault, not to chips
-    notify('vault', 'Vault interest paid', `+${paid.toLocaleString()} chips into your vault.`, { type: 'go', tab: 'rewards' });
-  }
-  return paid;
-}
+function econAccrueVault() { if (online()) return 0; const ev = []; const paid = ECON.accrueVault(PLAYER, now(), ev); econAnnounce(ev); return paid; }
 
 /** Deposit (+) or withdraw (-). A transfer, not a grant: chips + vault is unchanged. */
 function econVault(amount) {
-  econAccrueVault();
-  if (!Number.isInteger(amount) || amount === 0) return false;
-  if (amount > 0 && amount > S.chips) return false;
-  if (amount < 0 && -amount > S.econ.vault.balance) return false;
-  ECON.vaultMove(S.econ.vault, amount);
-  S.chips -= amount;
+  if (online()) return onEcon({ op: 'vault', amount }).then(d => !!(d && d.ok));
+  const ev = [];
+  const ok = ECON.moveVault(PLAYER, amount, now(), ev);
+  econAnnounce(ev);
+  if (!ok) return false;
   save();
   renderBank(); econRenderRewards();
   return true;
@@ -3109,18 +3082,15 @@ function econVault(amount) {
 /* ---------- shop ---------- */
 
 function econBuy(id) {
-  const it = ECON.SHOP_BY_ID[id];
-  const p = ECON.shopPrice(id, now());   // today's price, or null if not in rotation
-  if (!it || !p || S.econ.owned.includes(id) || S.chips < p.price) return false;
-  econGrant('shop', -p.price);
-  S.econ.owned.push(id);
-  econEquip(id);
+  if (online()) return onEcon({ op: 'buy', id }).then(d => !!(d && d.ok));
+  if (!ECON.buy(PLAYER, id, now())) return false;
+  econEquip(id);   // buy() already equipped it; this redraws and saves
   return true;
 }
 
 /** One shop card. `p` is today's price (ECON.shopPrice), null if out of rotation. */
 function shopItemHTML(it, p) {
-  const owned = S.econ.owned.includes(it.id), eq = S.econ.equipped[it.kind] === it.id;
+  const owned = E().owned.includes(it.id), eq = E().equipped[it.kind] === it.id;
   const sw = it.kind === 'title'
     ? `<div class="sw" style="background:rgba(255,255,255,.06);font-style:italic">${it.text || '&mdash;'}</div>`
     : `<div class="sw" style="background:${it.kind === 'back'
@@ -3130,7 +3100,7 @@ function shopItemHTML(it, p) {
   const btn = eq ? '<button disabled>Equipped</button>'
     : owned ? `<button data-equip="${it.id}">Equip</button>`
     : !p ? '<button disabled>Not in rotation</button>'
-    : `<button data-buy="${it.id}" ${S.chips < p.price ? 'disabled' : ''}>Buy ${p.price.toLocaleString()}` +
+    : `<button data-buy="${it.id}" ${bankroll() < p.price ? 'disabled' : ''}>Buy ${p.price.toLocaleString()}` +
       (p.off ? ` <s>${p.base.toLocaleString()}</s>` : '') + '</button>';
   return `<div class="item${eq ? ' equipped' : ''}${p && p.off ? ' onsale' : ''}">${tag}${sw}<div>${it.name} <span style="color:#667">${it.kind}</span></div>${btn}</div>`;
 }
@@ -3151,13 +3121,12 @@ function shopHTML(t) {
       `<span class="sub">Collections return every ${ECON.COLLECTIONS.length} weeks; anything you buy is yours for good.</span></div>` +
       `<div class="shop">${c.collection.items.map(card).join('')}</div></div>` +
     '<div class="shopsec"><div class="shophead"><strong>Everything else</strong></div>' +
-      `<div class="shop">${ECON.SHOP.filter(it => !featured.has(it.id) && (!it.collection || S.econ.owned.includes(it.id))).map(card).join('')}</div></div>`;
+      `<div class="shop">${ECON.SHOP.filter(it => !featured.has(it.id) && (!it.collection || E().owned.includes(it.id))).map(card).join('')}</div></div>`;
 }
 
 function econEquip(id) {
-  const it = ECON.SHOP_BY_ID[id];
-  if (!it || !S.econ.owned.includes(id)) return false;
-  S.econ.equipped[it.kind] = id;
+  if (online()) return onEcon({ op: 'equip', id }).then(d => !!(d && d.ok));
+  if (!ECON.equip(PLAYER, id)) return false;
   applyCosmetics();
   save();
   renderBank(); econRenderHeader(); econRenderRewards();
@@ -3167,7 +3136,7 @@ function econEquip(id) {
 function applyCosmetics() {
   const root = document.documentElement;
   if (!root || !root.style || !root.style.setProperty) return;
-  const felt = ECON.SHOP_BY_ID[S.econ.equipped.felt], back = ECON.SHOP_BY_ID[S.econ.equipped.back];
+  const felt = ECON.SHOP_BY_ID[E().equipped.felt], back = ECON.SHOP_BY_ID[E().equipped.back];
   if (felt) { root.style.setProperty('--felt', felt.colors[0]); root.style.setProperty('--felt-dark', felt.colors[1]); }
   if (back) { root.style.setProperty('--back-a', back.colors[0]); root.style.setProperty('--back-b', back.colors[1]); }
 }
@@ -3180,7 +3149,7 @@ function econRenderHeader() {
   $('rankLevel').textContent = `Lv ${lv.level}`;
   $('rankWho').innerHTML = profile ? `${AVATAR_ICON[profile.avatar] || ''} ${profile.display_name} &middot; ` : '';
   $('rankTier').textContent = on ? lv.tierName : ECON.TIERS[econTier()].name;
-  $('rankTitle').textContent = ECON.SHOP_BY_ID[S.econ.equipped.title].text;
+  $('rankTitle').textContent = ECON.SHOP_BY_ID[E().equipped.title].text;
   $('xpFill').style.width = (100 * lv.into / lv.need).toFixed(1) + '%';
   $('xpText').textContent = `${lv.into} / ${lv.need} XP`;
   const live = ECON.activeEvents(now());
@@ -3250,9 +3219,9 @@ function econRenderRewards() {
     : `Unlocks whenever you're under ${ECON.WHEELS.rescue.availableBelow} chips, as often as you need it.`;
 
   // Quests
-  const qs = S.econ.quests;
+  const qs = E().quests;
   const rw = ECON.questReward(qs.tier, t);
-  const midnight = new Date(t.getFullYear(), t.getMonth(), t.getDate() + 1);
+  const midnight = ECON.nextDayStart(t);   // casino-clock midnight
   $('questList').innerHTML = qs.list.map((q, i) => {
     const r = q.reward || rw;
     const claimable = q.done && !q.claimed;
@@ -3272,10 +3241,10 @@ function econRenderRewards() {
   $('eventList').innerHTML =
     live.map(e => `<div class="ev live"><strong>Now: ${e.name}</strong><div>${e.desc}</div><div class="effect">${econEventEffect(e)}</div></div>`).join('') +
     ECON.upcomingEvents(t, 5).filter(u => !live.includes(u.event)).map(u =>
-      `<div class="ev"><div>${u.event.name} <span class="when">${days[u.start.getDay()]} ${hr(u.event.fromHour)}` +
-      `${u.event.toHour < 24 ? '–' + hr(u.event.toHour) : ''}</span></div><div class="effect">${u.event.desc}</div></div>`
+      `<div class="ev"><div>${u.event.name} <span class="when">${days[ECON.wall(u.start).dow]} ${hr(u.event.fromHour)}` +
+      `${u.event.toHour < 24 ? '–' + hr(u.event.toHour) : ''} ET, in ${fmtWait(u.start - t)}</span></div><div class="effect">${u.event.desc}</div></div>`
     ).join('') +
-    '<div class="hint">Same calendar for everyone (your local time). Events add promo chips on top; they never change a game\'s cards or paytables.</div>';
+    `<div class="hint">One calendar for everyone, on ${ECON.CLOCK_NAME} (ET): days, events, quests and the shop all turn over at midnight ET, wherever you are. Events add promo chips on top; they never change a game's cards or paytables.</div>`;
 
   // Shop
   $('shop').innerHTML = shopHTML(t);
@@ -3285,14 +3254,14 @@ function econRenderRewards() {
   }
 
   // Vault
-  const v = S.econ.vault, due = ECON.vaultInterest(v.minToday, tier);
+  const v = E().vault, due = ECON.vaultInterest(v.minToday, tier);
   const cap = Math.round(ECON.VAULT.capBase * ECON.TIERS[tier].mult);
   $('vaultBox').innerHTML =
     `<div class="vaultbal">${v.balance.toLocaleString()} <span>chips saved</span></div>` +
     `<div class="hint" style="margin:4px 0 10px">Earns ${(100 * ECON.VAULT.rate).toFixed(0)}% a day, up to ${cap.toLocaleString()} a day at your rank. ` +
     `Interest is paid on the lowest balance the vault held all day, so deposits start earning tomorrow. ` +
     `Due at midnight: <strong>+${due.toLocaleString()}</strong>. Saved chips can't be bet, and they count toward your balance for the Rescue Wheel. ` +
-    `Interest earned so far: ${S.econ.ledger.interest.toLocaleString()}.</div>`;
+    `Interest earned so far: ${E().ledger.interest.toLocaleString()}.</div>`;
 
   // Tiers
   const lvl = econLevel().level;
@@ -3303,8 +3272,18 @@ function econRenderRewards() {
     `barely more for big bets) and quests, so rank tracks time at the table, not your bankroll. Every game's odds are identical at every rank.</td></tr>`;
 
   // Ledger
-  const L = S.econ.ledger, rec = econReconcile();
   const row = (k, v) => `<tr class="stat-row"><td>${k}</td><td>${v >= 0 ? '+' : ''}${v.toLocaleString()}</td></tr>`;
+  if (online()) {
+    const L = E().ledger;
+    $('ledgerTable').innerHTML =
+      '<tr><td colspan="2" class="hint" style="text-align:left">Online, every chip change is a row in the server\'s ledger, and the database refuses any balance change those rows don\'t account for exactly.</td></tr>' +
+      row('Bonus Wheel', L.bonusWheel) + row('Rescue Wheel', L.rescueWheel) + row('Quests', L.quests) +
+      row('Event promos', L.promo) + row('Vault interest', L.interest) + row('Shop', L.shop) +
+      (E().vault.balance ? `<tr class="stat-row"><td>of which in the vault</td><td>${E().vault.balance.toLocaleString()}</td></tr>` : '') +
+      `<tr class="stat-row"><td><strong>Total</strong></td><td><strong>${(bankroll() + E().vault.balance).toLocaleString()}</strong></td></tr>`;
+    return;
+  }
+  const L = S.econ.ledger, rec = econReconcile();
   $('ledgerTable').innerHTML =
     `<tr class="stat-row"><td>Opening balance</td><td>${L.opening.toLocaleString()}</td></tr>` +
     row('Three Card Poker', S.stats.net) + row('Blackjack', S.bj.stats.net) + row('Free Bet', S.fb.stats.net) +
@@ -3550,10 +3529,10 @@ document.addEventListener('keydown', e => {
 $('spin-bonus').onclick = () => econSpinClick('bonus');
 $('spin-rescue').onclick = () => econSpinClick('rescue');
 const vaultAmt = () => Math.floor(Number($('vaultAmt').value));
-$('vaultIn').onclick = () => { if (!econVault(vaultAmt())) $('rewardsMsg').textContent = 'Enter an amount you have on hand.'; };
-$('vaultOut').onclick = () => { if (!econVault(-vaultAmt())) $('rewardsMsg').textContent = 'Enter an amount that is in the vault.'; };
-$('vaultAllIn').onclick = () => { if (S.chips > 0) econVault(S.chips); };
-$('vaultAllOut').onclick = () => { if (S.econ.vault.balance > 0) econVault(-S.econ.vault.balance); };
+$('vaultIn').onclick = () => { Promise.resolve(econVault(vaultAmt())).then(ok => { if (!ok) $('rewardsMsg').textContent = 'Enter an amount you have on hand.'; }); };
+$('vaultOut').onclick = () => { Promise.resolve(econVault(-vaultAmt())).then(ok => { if (!ok) $('rewardsMsg').textContent = 'Enter an amount that is in the vault.'; }); };
+$('vaultAllIn').onclick = () => { if (bankroll() > 0) econVault(bankroll()); };
+$('vaultAllOut').onclick = () => { if (E().vault.balance > 0) econVault(-E().vault.balance); };
 /* ---------- notifications, claim buttons, links ----------
  * One delegated handler for every Claim / Open / Play button, wherever it was
  * rendered (bell list, toasts, Home, Rewards). */

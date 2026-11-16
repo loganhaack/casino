@@ -94,7 +94,8 @@ function loadPage(net, storage) {
   vm.createContext(sandbox);
   vm.runInContext(script + `
 ;globalThis.__h = { getS: () => S, getON: () => ON, online, TS, bankroll, showGame, bjDeal, bjAct, onToggle, onRescue,
-  acctSignOut, get bjTable() { return bjTable; } };`, sandbox, { filename: 'index.html:script' });
+  acctSignOut, econClaimQuest, econClaimAll, econVault, econBuy, econEquip, econSpinClick, econUnclaimed, E,
+  get bjTable() { return bjTable; } };`, sandbox, { filename: 'index.html:script' });
   return { H: sandbox.__h, el: id => sandbox.document.getElementById(id) };
 }
 
@@ -102,6 +103,19 @@ function newNet() { return { store: memStore(), calls: 0, responses: [], down: 0
 function signedInStorage() {
   return new Map([['casino.auth.v1', JSON.stringify({ access_token: 'tok', refresh_token: 'r',
     expires_at: Math.floor(Date.now() / 1000) + 86400, user: { id: USER, email: 'p@example.com' } })]]);
+}
+
+/**
+ * Finish the current round: decline insurance, then `move` (default stand).
+ * Guarded: an action the page ignores (illegal right now) would otherwise
+ * spin forever on resolved promises and starve the watchdog timer.
+ */
+async function finish(P, move = 'stand') {
+  for (let guard = 0; P.H.TS().round; guard++) {
+    if (guard > 50) throw new Error('round did not finish');
+    const r = P.H.TS().round;
+    await P.H.bjAct(r.phase === 'insurance' ? 'decline' : typeof move === 'function' ? move(r) : move);
+  }
 }
 
 /** Play one whole round on the current table with basic strategy. Returns the finished round. */
@@ -152,13 +166,15 @@ setTimeout(() => { console.log('\nFAIL: timed out (a round never finished?)'); p
           await net.store.commit(USER, w.version, { chips: w.chips + 2000, vault: 0, econ: w.econ,
             ledger: [{ account: 'chips', amount: 2000, kind: 'quests' }] });
           await P.H.bjDeal();   // stale seq? no: grants don't touch tables. Deal refreshes the wallet.
-          while (P.H.TS().round) await P.H.bjAct(BJ.basicStrategy(P.H.TS().round, P.H.bankroll()));
+          await finish(P, r => BJ.basicStrategy(r, P.H.bankroll()));
         }
-        const before = net.store.wallets.get(USER).chips;
+        const before = net.store.wallets.get(USER).chips, rows0 = net.store.ledger.length;
         const r = await playRound(P, rnd);
         const after = net.store.wallets.get(USER).chips;
         ok(r && r.phase === 'done' && r.dealer.every(c => c !== null), 'finished round shown in full');
-        ok(after - before === r.net, `server moved ${after - before}, page shows net ${r.net}`);
+        // Economy grants during the round (promos, a quest rollover) are their own ledger rows.
+        const extra = net.store.ledger.slice(rows0).filter(x => x.account === 'chips' && x.kind !== 'bet' && x.kind !== 'payout').reduce((a, x) => a + x.amount, 0);
+        ok(after - before === r.net + extra, `server moved ${after - before}, page shows net ${r.net} + grants ${extra}`);
         ok(P.H.bankroll() === after, `page bankroll ${P.H.bankroll()} == server ${after}`);
         ok(after === net.store.ledgerSum(USER), 'server chips == ledger');
         ok(P.H.getS().chips === S0chips, 'browser chips untouched');
@@ -182,7 +198,7 @@ setTimeout(() => { console.log('\nFAIL: timed out (a round never finished?)'); p
     P.H.getS().bj.bet = 10;
     P.H.showGame('bj');
     P.H.bjDeal();
-    while (P.H.TS().round) P.H.bjAct(BJ.basicStrategy(P.H.TS().round, P.H.getS().chips));
+    for (let g = 0; P.H.TS().round; g++) { if (g > 50) throw new Error('offline round did not finish'); P.H.bjAct(BJ.basicStrategy(P.H.TS().round, P.H.getS().chips)); }
     ok(P.H.getS().chips !== S0chips || P.H.getS().bj.last.net === 0, 'offline round moved browser chips');
     ok(net.calls === calls && JSON.stringify(net.store.wallets.get(USER)) === serverBefore, 'offline round did not touch the server');
     P.H.onToggle();
@@ -207,7 +223,7 @@ setTimeout(() => { console.log('\nFAIL: timed out (a round never finished?)'); p
     ok(P2.H.online() && r2 && JSON.stringify(r2.hands.map(h => h.cards)) === cards && r2.wagered === wagered,
       'reloaded page resumes the same round from the server');
     ok(r2 && r2.dealer[1] === null, 'resumed round still hides the hole card');
-    while (P2.H.TS().round) await P2.H.bjAct('stand');
+    await finish(P2);
     ok(net.store.wallets.get(USER).chips === net.store.ledgerSum(USER), 'ledger identity after resumed round');
     P = P2;
     report('a reload mid-round resumes it from the server, hole card still hidden', f);
@@ -232,7 +248,7 @@ setTimeout(() => { console.log('\nFAIL: timed out (a round never finished?)'); p
     ok(P.H.bankroll() === w.chips, 'lost reply: page resynced to the server balance');
     const srv = net.store.tables.get(USER + '/bj');
     ok(P.H.TS().seq === srv.seq, 'lost reply: page has the current seq');
-    while (P.H.TS().round) await P.H.bjAct('stand');
+    await finish(P);
     // 3. A click with a stale seq (as from a second tab) is refused and resynced.
     P.H.TS().seq -= 1;
     b0 = bets();
@@ -240,7 +256,7 @@ setTimeout(() => { console.log('\nFAIL: timed out (a round never finished?)'); p
     ok(bets() === b0 && P.H.TS().seq === net.store.tables.get(USER + '/bj').seq, 'stale click refused, page resynced');
     await P.H.bjDeal();
     ok(bets() === b0 + 1, 'next click works');
-    while (P.H.TS().round) await P.H.bjAct('stand');
+    await finish(P);
     report('dropped requests and lost replies resync; nothing lost or doubled', f);
   }
 
@@ -257,7 +273,7 @@ setTimeout(() => { console.log('\nFAIL: timed out (a round never finished?)'); p
     let guard = 0;
     while (net.store.wallets.get(USER).chips >= 10 && guard++ < 500) {
       await P.H.bjDeal();
-      while (P.H.TS().round) await P.H.bjAct(P.H.TS().round.phase === 'insurance' ? 'decline' : 'hit');
+      await finish(P, 'hit');
     }
     const low = net.store.wallets.get(USER).chips;
     ok(low < 10 && P.H.bankroll() === low, 'played down below 10 online');
@@ -273,6 +289,73 @@ setTimeout(() => { console.log('\nFAIL: timed out (a round never finished?)'); p
     await P.H.onRescue();
     ok(net.store.ledger.length === n, 'second rescue refused once above 10');
     report('play down to broke, rescue pays via the server ledger, odds shown, no double rescue', f);
+  }
+
+  console.log('\nrewards online');
+  {
+    const f = fail, S0 = P.H.getS().chips, L0 = JSON.stringify(P.H.getS().econ.ledger);
+    const lastRow = () => net.store.ledger[net.store.ledger.length - 1];
+    const synced = () => P.H.bankroll() === net.store.wallets.get(USER).chips && P.H.E().vault.balance === net.store.wallets.get(USER).vault;
+    P.H.showGame('rewards');
+    ok(!P.el('game-rewards').hidden && P.el('game-offonly').hidden, 'Rewards tab is available online');
+    P.H.showGame('tcp');
+    ok(P.el('game-offonly').hidden === false, 'Poker still shows the offline-only panel');
+    P.H.showGame('rewards');
+    ok(JSON.stringify(P.H.E()) === JSON.stringify(net.store.wallets.get(USER).econ) || P.H.E().quests.day === net.store.wallets.get(USER).econ.quests.day,
+      'page shows the server\'s economy state');
+
+    // Give the account some chips to work with (a server-side grant, then refresh).
+    let w = net.store.wallets.get(USER);
+    await net.store.commit(USER, w.version, { chips: w.chips + 60000, vault: w.vault, econ: w.econ, ledger: [{ account: 'chips', amount: 60000, kind: 'promo' }] });
+    await P.H.econVault(0);   // refused (zero), but refreshes the wallet
+    ok(synced(), 'page picked up the server balance');
+
+    // Bonus Wheel through the page's own spin button handler.
+    const rows0 = net.store.ledger.length;
+    P.H.econSpinClick('bonus');
+    await tick();
+    ok(net.store.ledger.length === rows0 + 1 && lastRow().kind === 'bonusWheel', 'Bonus Wheel spun on the server, paid via a bonusWheel row');
+    ok(synced(), 'page balance matches the server after the spin');
+    P.H.econSpinClick('bonus');
+    await tick();
+    ok(net.store.ledger.length === rows0 + 1, 'second spin refused by the server (cooldown)');
+
+    // Vault.
+    ok(await P.H.econVault(5000), 'deposit 5,000 via the page');
+    ok(net.store.wallets.get(USER).vault === 5000 && synced(), 'server vault holds 5,000; page agrees');
+    ok(!(await P.H.econVault(-999999)), 'over-withdraw refused');
+    ok(await P.H.econVault(-1000), 'withdraw 1,000');
+    ok(net.store.wallets.get(USER).vault === 4000 && synced(), 'server vault 4,000');
+
+    // Shop: buy something on sale today, then equip a default back.
+    const ECON = require('./economy.js');
+    const t = new Date(), cyc = ECON.shopCycle(t);
+    const id = [cyc.deal, ...cyc.spotlight, ...ECON.SHOP.map(x => x.id)]
+      .find(x => { const p = ECON.shopPrice(x, t); return p && p.price > 0 && p.price <= P.H.bankroll() && !P.H.E().owned.includes(x); });
+    ok(await P.H.econBuy(id), 'buy ' + id);
+    ok(net.store.wallets.get(USER).econ.owned.includes(id) && lastRow().kind === 'shop' && synced(), 'server recorded the purchase via a shop row');
+    ok(!(await P.H.econBuy(id)), 'buying it twice refused');
+    ok(await P.H.econEquip('back-blue'), 'equip an owned card back');
+    ok(net.store.wallets.get(USER).econ.equipped.back === 'back-blue', 'server recorded the equip');
+
+    // Quests: finish one on the server and claim it through the page.
+    w = net.store.wallets.get(USER);
+    const e = JSON.parse(JSON.stringify(w.econ));
+    const qi = e.quests.list.findIndex(q => !q.done);
+    if (qi >= 0) {
+      Object.assign(e.quests.list[qi], { done: true, progress: e.quests.list[qi].target, claimed: false, reward: { chips: 77, xp: 7 } });
+      await net.store.commit(USER, w.version, { chips: w.chips, vault: w.vault, econ: e, ledger: [] });
+      await P.H.econVault(0);   // refresh
+      ok(P.H.econUnclaimed().length >= 1, 'page sees the finished quest');
+      const rw = await P.H.econClaimQuest(qi, e.quests.day);
+      ok(rw && rw.chips === 77 && lastRow().kind === 'quests' && lastRow().amount === 77 && synced(), 'claimed through the page: server paid 77 via a quests row');
+      ok(!(await P.H.econClaimQuest(qi, e.quests.day)), 'claiming again refused');
+    } else ok(false, 'no open quest to finish');
+
+    ok(net.store.wallets.get(USER).chips === net.store.ledgerSum(USER, 'chips') &&
+       net.store.wallets.get(USER).vault === net.store.ledgerSum(USER, 'vault'), 'server ledger identity, chips and vault');
+    ok(P.H.getS().chips === S0 && JSON.stringify(P.H.getS().econ.ledger) === L0, 'browser chips and browser ledger untouched by online rewards');
+    report('Rewards online: Bonus Wheel, vault, shop, equip and quest claims all run on the server; page mirrors it', f);
   }
 
   console.log('\nsign out');
