@@ -23,6 +23,8 @@ node test-blackjack.js         # blackjack totals + engine scenarios + fuzz, ~6s
 node enumerate-blackjack.js    # exact dealer tables vs Wizard of Odds, <1s, writes expected-blackjack.json
 node test-blackjack-payouts.js # real page code: chip accounting, house edge, dealer chi-square, ~3min
 node test-economy.js           # wheels, quests, events, ledger, "deal is indifferent to who you are", ~30s
+node sync-shared.js            # copy blackjack-core/tables/economy into supabase/functions/_shared/
+node sync-shared.js --check    # fails if the server's copies drift from the root files
 open index.html                # the game; no build step, no server, no deps
 ```
 
@@ -186,6 +188,10 @@ economy section only applies those rules.
   SQL Editor. Every table gets RLS on, `revoke all` from `anon`/`authenticated`,
   then explicit column grants and policies. Verify from outside with the
   publishable key that anonymous reads/writes get `42501`.
+- Edge Functions load `supabase/functions/_shared/` copies of
+  `blackjack-core.js`, `tables.js` and `economy.js`. Those are byte-identical
+  copies made by `sync-shared.js`; never edit them. Edit the root file, re-sync,
+  and run `--check` before any deploy (the eval3() drift rule, server edition).
 - Step 1 (done): profiles only (name, avatar). Chips still live in the browser.
   Step 2: balances + ledger + dealing move into Edge Functions together. A
   balance column the browser can write is a balance anyone can edit.
