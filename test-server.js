@@ -124,7 +124,7 @@ function choose(view, rnd) {
   return acts.includes('stand') ? (rnd() < 0.5 ? 'hit' : 'stand') : acts[0];
 }
 
-(async function main() {
+async function main() {
   const t0 = Date.now();
 
   section('shared code');
@@ -252,6 +252,76 @@ function choose(view, rnd) {
     report(`${rounds} rounds, ${requests} requests: ledger identity every request, no shoe/hole card ever sent (XP ${xp}, Lv${s.wallet.rank.level})`, f);
   }
 
+  section('rescue wheel');
+  {
+    const f = fail;
+    const ECON = require('./economy.js');
+    const wheel = ECON.WHEELS.rescue;
+    /** A store whose player has `chips` on hand (spent through a shop row). */
+    async function brokeStore(chips, xp = 0) {
+      const st = memStore();
+      await PLAY.handle(st, 'u', { op: 'state' });
+      await st.commit('u', 0, { chips, vault: 0, econ: { xp }, ledger: [{ account: 'chips', amount: chips - 1000, kind: 'shop' }] });
+      return st;
+    }
+    let st = await brokeStore(10);
+    let r = await PLAY.handle(st, 'u', { op: 'rescue' });
+    ok(!r.ok && r.error === 'not_broke', 'refused at exactly availableBelow (10)');
+
+    st = await brokeStore(9);
+    // A round in progress (chips in play) blocks it, even when the wallet is low.
+    const st2 = memStore();
+    await PLAY.handle(st2, 'u', { op: 'state' });
+    await st2.commit('u', 0, { chips: 18, vault: 0, econ: {}, ledger: [{ account: 'chips', amount: -982, kind: 'shop' }] });
+    let seq = 0, inPlay = false;
+    for (let i = 0; i < 100 && !inPlay; i++) {
+      const d = await PLAY.handle(st2, 'u', { op: 'deal', table: 'bj', seq, bet: 10 });
+      if (!d.ok) break;
+      seq = d.view.seq;
+      if (d.view.round) inPlay = true;
+    }
+    if (inPlay && st2.wallets.get('u').chips < 10) {
+      r = await PLAY.handle(st2, 'u', { op: 'rescue' });
+      ok(!r.ok && r.error === 'round_in_progress', 'refused with a round in progress');
+    } else ok(false, 'could not set up a low wallet with a round in progress');
+
+    r = await PLAY.handle(st, 'u', { op: 'rescue' });
+    ok(r.ok && wheel.slices.some(s => s.chips === r.spin.chips) && r.wallet.chips === 9 + r.spin.chips, 'granted when under 10');
+    const row = st.ledger[st.ledger.length - 1];
+    ok(row.kind === 'rescueWheel' && row.amount === r.spin.chips, 'paid through a rescueWheel ledger row');
+    ok(st.wallets.get('u').chips === st.ledgerSum('u'), 'ledger identity after rescue');
+    const again = await PLAY.handle(st, 'u', { op: 'rescue' });
+    ok(!again.ok && again.error === 'not_broke', 'no second spin once rescued');
+
+    // Odds: the server's spins follow the published weights (crypto RNG, 20k spins).
+    const counts = wheel.slices.map(() => 0), N = 20000, total = ECON.wheelTotal(wheel);
+    const rich = await brokeStore(0, 500000), poor = await brokeStore(0, 0);
+    for (let i = 0; i < N; i++) {
+      const s = await PLAY.handle(rich, 'u', { op: 'rescue' });
+      counts[s.spin.idx]++;
+      const w = rich.wallets.get('u');   // spend it back to 0 to spin again
+      await rich.commit('u', w.version, { chips: 0, vault: 0, econ: w.econ, ledger: [{ account: 'chips', amount: -w.chips, kind: 'shop' }] });
+    }
+    let chi = 0;
+    wheel.slices.forEach((s, i) => { const e = N * s.weight / total; chi += (counts[i] - e) ** 2 / e; });
+    // 4 degrees of freedom: P(chi2 > 23.5) is about 1 in 10,000.
+    ok(chi < 23.5, `rescue spin frequencies off the published weights: chi2 ${chi.toFixed(1)}`);
+
+    // Hard rule 2: same seed, Diamond vs Lv1, identical prize sequence.
+    const seqOf = async (store) => {
+      const ri = seededInt(31), out = [];
+      for (let i = 0; i < 200; i++) {
+        const s = await PLAY.handle(store, 'u', { op: 'rescue' }, { randInt: ri });
+        out.push(s.spin.chips);
+        const w = store.wallets.get('u');
+        await store.commit('u', w.version, { chips: 0, vault: 0, econ: w.econ, ledger: [{ account: 'chips', amount: -w.chips, kind: 'shop' }] });
+      }
+      return out.join(',');
+    };
+    ok(await seqOf(await brokeStore(0, 500000)) === await seqOf(poor), 'rescue prizes differ by rank');
+    report(`refused unless broke with nothing in play; pays via ledger; ${N} spins match the weights (chi2 ${chi.toFixed(1)}, 4 df); rank-blind`, f);
+  }
+
   section('same game as the page');
   {
     const f = fail;
@@ -330,4 +400,7 @@ function choose(view, rnd) {
 
   console.log(`\n${fail ? 'FAIL' : 'PASS'}: ${pass} checks, ${fail} failed (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
   process.exit(fail ? 1 : 0);
-})().catch(e => { console.error(e); process.exit(1); });
+}
+
+module.exports = { memStore, mulberry32, seededInt };
+if (require.main === module) main().catch(e => { console.error(e); process.exit(1); });

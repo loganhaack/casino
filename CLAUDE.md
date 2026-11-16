@@ -26,6 +26,7 @@ node test-economy.js           # wheels, quests, events, ledger, "deal is indiff
 node sync-shared.js            # copy blackjack-core/tables/economy into supabase/functions/_shared/
 node sync-shared.js --check    # fails if the server's copies drift from the root files
 node test-server.js            # online table server vs in-memory commit_turn: ledger, no leaks, same game, ~30s
+node test-online-page.js       # real page code playing online against the real server logic, ~10s
 open index.html                # the game; no build step, no server, no deps
 ```
 
@@ -201,8 +202,17 @@ economy section only applies those rules.
   double click can't bet twice. Deploy:
   `npx supabase functions deploy play --project-ref kavaswxswtkvguzdljyi --use-api --no-verify-jwt`
   (the function checks the token itself). Run `test-server.js` first.
-- Online so far: blackjack + Free Bet, base XP / table limits. Quests,
-  promos, Double XP, wheels, vault, shop are not online yet: events run on
+- **Page online mode** (ONLINE PLAY section of `index.html`): signed in,
+  `TS()` and `bankroll()` point at `ON` (server views) instead of `S`, so the
+  same renderer draws both modes. Online, the page never moves a chip or
+  calls `econAfterRound`; `bjSettle()` only records display stats. Don't
+  write `S.chips` in an online path. An Online/Offline button under the
+  chips switches; Poker and Rewards show an "offline only" panel while
+  online. Display stats/bets persist under `casino.online.v1`.
+- Online so far: blackjack + Free Bet, base XP / table limits, and the
+  Rescue Wheel (`op: 'rescue'`, same `ECON.WHEELS.rescue` odds, shown as a
+  button with its odds listed when an online player is broke). Quests,
+  promos, Double XP, Bonus Wheel, vault, shop are not online yet: events run on
   the player's local clock and the server is UTC, which needs deciding first.
 - Step 1 (done): profiles only (name, avatar). Chips still live in the browser.
   Step 2: balances + ledger + dealing move into Edge Functions together. A

@@ -17,8 +17,8 @@
  * each table's round with the dealer's hole card hidden until the round is
  * over. NEVER the shoe. That is the reason dealing moved server-side.
  *
- * Not online yet (next step): quests, event promos, Double XP, wheels, vault,
- * shop. They need the event clock decided first (events run on the player's
+ * Not online yet (next step): quests, event promos, Double XP, Bonus Wheel,
+ * vault, shop. (The Rescue Wheel is online: it has no clock in it.) They need the event clock decided first (events run on the player's
  * local time, the server runs on UTC). XP is awarded at the base rate so
  * table limits work.
  *
@@ -163,6 +163,25 @@
     settled(turn, t);
   }
 
+  /**
+   * Rescue Wheel: same rule and same fixed odds as offline (ECON.WHEELS.rescue,
+   * not scaled by tier): available whenever chips + vault are under
+   * availableBelow and no chips are in play at any table.
+   */
+  async function rescue(store, userId, w, randInt) {
+    const wheel = ECON.WHEELS.rescue;
+    if (w.chips + w.vault >= wheel.availableBelow) {
+      refuse('not_broke', `The Rescue Wheel is for when you're under ${wheel.availableBelow} chips.`);
+    }
+    for (const t of Object.keys(TABLES)) {
+      const ts = await store.table(userId, t);
+      if (ts && ts.round) refuse('round_in_progress', 'Finish your round first: chips in play still count.');
+    }
+    const idx = ECON.spinWheel(wheel, randInt || BJ.cryptoRandInt);
+    const chips = ECON.slicePrize(wheel.slices[idx], 1);
+    return { idx, chips };
+  }
+
   /* ------------------------------------------------------------ handler -- */
 
   /**
@@ -173,6 +192,7 @@
    *   { op: 'state' }
    *   { op: 'deal', table: 'bj'|'fb', seq, bet, side: { perfectPairs, twentyOnePlus3 } }
    *   { op: 'act',  table, seq, action: 'hit'|'stand'|'double'|'split'|'insure'|'decline' }
+   *   { op: 'rescue' }   -> spin: { idx, chips }
    *
    * `seq` is the table's seq from the view the player clicked on. A double
    * click or a second tab sends a stale seq and is refused, so one click can
@@ -181,8 +201,8 @@
   async function handle(store, userId, req, opts) {
     const randInt = (opts && opts.randInt) || undefined;
     if (!req || typeof req !== 'object') return fail('bad_request', 'Bad request.');
-    if (!['state', 'deal', 'act'].includes(req.op)) return fail('bad_request', 'Unknown op.');
-    if (req.op !== 'state' && !TABLES[req.table]) return fail('bad_request', 'Unknown table.');
+    if (!['state', 'deal', 'act', 'rescue'].includes(req.op)) return fail('bad_request', 'Unknown op.');
+    if ((req.op === 'deal' || req.op === 'act') && !TABLES[req.table]) return fail('bad_request', 'Unknown table.');
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       let w = await store.wallet(userId);
@@ -192,6 +212,26 @@
         const tables = {};
         for (const t of Object.keys(TABLES)) tables[t] = tableView((await store.table(userId, t)) || emptyTable(), w.chips);
         return { ok: true, wallet: walletView(w), tables };
+      }
+
+      if (req.op === 'rescue') {
+        let spin;
+        try { spin = await rescue(store, userId, w, randInt); }
+        catch (e) {
+          if (!(e instanceof PlayError)) throw e;
+          return { ok: false, error: e.code, message: e.message, wallet: walletView(w) };
+        }
+        const econ = { ...(w.econ || {}), rescues: ((w.econ && w.econ.rescues) || 0) + 1 };
+        try {
+          await store.commit(userId, w.version, {
+            chips: w.chips + spin.chips, vault: w.vault, econ,
+            ledger: [{ account: 'chips', amount: spin.chips, kind: 'rescueWheel' }],
+          });
+        } catch (e) {
+          if (e && e.code === '40001') continue;
+          throw e;
+        }
+        return { ok: true, wallet: walletView({ ...w, chips: w.chips + spin.chips, econ, version: w.version + 1 }), spin };
       }
 
       const t = req.table;

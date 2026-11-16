@@ -49,6 +49,14 @@
   .bank { text-align: right; }
   .bank .amt { font: 650 26px/1 var(--mono); color: var(--chip); }
   .bank .lbl { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em; }
+  .bank .mode {
+    margin-top: 4px; padding: 2px 8px; border-radius: 10px; cursor: pointer;
+    font-size: 11px; background: rgba(255,255,255,.08); color: var(--text-dim);
+    border: 1px solid var(--border);
+  }
+  .bank .mode.on { color: var(--win); border-color: rgba(95,214,138,.45); }
+  #game-offonly .panel { margin-top: 14px; }
+  #game-offonly p { margin: 0 0 10px; line-height: 1.5; }
 
   /* ---------- table ---------- */
   .felt {
@@ -533,7 +541,8 @@
     <div class="hdr-end">
       <div class="bank">
         <div class="amt" id="bank">0</div>
-        <div class="lbl">chips</div>
+        <div class="lbl" id="bankLbl">chips</div>
+        <button class="mode" id="modeBtn" hidden></button>
       </div>
       <div class="bellwrap">
         <button class="bell" id="bell" aria-label="Notifications" title="Notifications">&#128276;<span class="badge" id="bellBadge" hidden>0</span></button>
@@ -709,6 +718,16 @@
   </section>
 
   <!-- ===================== THREE CARD POKER ===================== -->
+  <section id="game-offonly" hidden>
+    <div class="panel">
+      <h3>Offline only, for now</h3>
+      <p>You're playing online. So far that covers Blackjack and Free Bet: your chips and the cards live on the server, so nobody can edit them.
+      Three Card Poker, the wheels, quests and the vault still run on this browser's chips.</p>
+      <p><button class="btn-sm" id="offonlyBtn">Switch to offline play</button>
+      <span class="sub">Your online chips stay safe on the server; switch back any time with the button under your chips.</span></p>
+    </div>
+  </section>
+
   <section id="game-tcp">
   <div class="felt">
     <div class="seat">
@@ -1365,7 +1384,7 @@ function chipSettle(flows, dealerEl, railEl, at) {
 
 let railShown = null;
 function renderBank() {
-  const v = bankHeld != null && animBusy() ? bankHeld : S.chips;
+  const v = bankHeld != null && animBusy() ? bankHeld : bankroll();
   $('bank').textContent = v.toLocaleString();
   if (railShown === v) return;
   railShown = v;
@@ -1702,8 +1721,12 @@ const BJ_TABLES = {
   fb: { name: 'Free Bet Blackjack', rules: BJ.makeRules(RULES.freeBet),   get edge() { return RULES.fbHouseEdge; } },
 };
 let bjTable = 'bj';
+let ON = null;                        // online play state (see ONLINE PLAY); null = offline
 const T = () => BJ_TABLES[bjTable];   // current table definition
-const TS = () => S[bjTable];          // current table state
+// Current table state: this browser's save offline, the server's view online.
+const TS = () => (online() ? ON.ts[bjTable] : S[bjTable]);
+// Chips the blackjack tables play with: S.chips offline, the server wallet online.
+const bankroll = () => (online() ? ON.wallet.chips : S.chips);
 const BJ_OUTCOME = { blackjack: 'Blackjack', win: 'Win', push: 'Push', lose: 'Lose', bust: 'Bust' };
 const BJ_SIDE_KEYS = Object.keys(BJ.SIDE_BETS);
 const BJ_SIDE_NAME = { perfectPairs: 'Perfect Pairs', twentyOnePlus3: '21+3' };
@@ -1752,6 +1775,7 @@ function bjEnsureShoe() {
 }
 
 function bjDeal() {
+  if (online()) return onDeal();
   if (TS().round) return;
   const bet = TS().bet;
   const side = {};
@@ -1773,6 +1797,7 @@ function bjDeal() {
 }
 
 function bjAct(action) {
+  if (online()) return onAct(action);
   const r = TS().round;
   if (!r) return;
   if (!BJ.legalActions(r, S.chips)[action]) return;
@@ -1797,8 +1822,11 @@ function bjAfter(prefix) {
 }
 
 function bjSettle(r, prefix) {
-  bankHold(S.chips);   // display only: keep showing this until the dealer's cards are revealed
-  S.chips += r.returned;
+  // Online, the server already paid r.returned into the wallet; this only
+  // records display stats and writes the message. No chips move here.
+  const on = online();
+  bankHold(on ? bankroll() - r.returned : S.chips);   // display only: show this until the dealer's cards are revealed
+  if (!on) S.chips += r.returned;
 
   const st = TS().stats;
   const playerNatural = r.hands.length === 1 && BJ.isNatural(r.hands[0].cards, false);
@@ -1855,7 +1883,8 @@ function bjSettle(r, prefix) {
 
   /* ---- economy: XP, quests, event promos. Reads the result; can't change it. ---- */
   const sideNet = Object.values(r.side || {}).reduce((a, sb) => a + sb.returned - sb.bet, 0);
-  const econLines = econAfterRound({
+  // Online rounds: XP is awarded by the server; quests/promos aren't online yet.
+  const econLines = on ? [] : econAfterRound({
     game: bjTable, wagered: r.wagered, minBet: RULES.bjMinBet,
     mainBet: r.baseBet, mainNet: r.net - sideNet,
     natural: r.hands.length === 1 && r.hands[0].outcome === 'blackjack',
@@ -1867,10 +1896,11 @@ function bjSettle(r, prefix) {
     sideWins: Object.values(r.side || {}).filter(sb => sb.returned > 0).length,
   });
   if (econLines.length) $('bjMsg').innerHTML += '<br>' + econLines.join('<br>');
-  $('bjMsg').innerHTML += econRescueHint();
-  if (TS().bet > S.chips) TS().bet = RULES.bjMinBet;
+  $('bjMsg').innerHTML += on ? onBrokeHint() : econRescueHint();
+  if (TS().bet > bankroll()) TS().bet = RULES.bjMinBet;
 
   save();
+  if (on) onSave();
   bjRender();
   bankRelease();
   bjRenderStats();
@@ -1889,7 +1919,7 @@ const bjShown = {};
  * then dealer draws, a little slower.
  */
 function bjPlanAnim(r, live, holeHidden) {
-  const peek = $('peek').checked;
+  const peek = $('peek').checked && !online();   // online, the hole card isn't in the page to peek at
   const id = !r ? 0 : TS().stats.rounds + (live ? 1 : 0);   // live round n+1 settles as round n+1
   const dTok = r ? r.dealer.map((c, i) => (i === 1 && holeHidden && !peek ? 'X' : c)) : [];
   const hTok = r ? r.hands.map(h => h.cards.slice()) : [];
@@ -2053,7 +2083,7 @@ function bjRender() {
   }
 
   // Buttons
-  const legal = live ? BJ.legalActions(r, S.chips) : {};
+  const legal = live ? BJ.legalActions(r, bankroll()) : {};
   const insurance = live && r.phase === 'insurance';
   $('bjMainActions').hidden = insurance;
   $('bjInsActions').hidden = !insurance;
@@ -2069,7 +2099,7 @@ function bjRender() {
 
   // Strategy hint: what basic strategy says right now
   if (live) {
-    const best = BJ.basicStrategy(r, S.chips);
+    const best = BJ.basicStrategy(r, bankroll());
     const fo = BJ.freeOffers(r);
     const label = { hit: 'hit', stand: 'stand', double: fo.double ? 'free double' : 'double',
                     split: fo.split ? 'free split' : 'split', decline: 'decline insurance' }[best];
@@ -2164,10 +2194,13 @@ function showGame(g) {
   S.game = BJ_TABLES[g] || g === 'rewards' || g === 'home' ? g : 'tcp';
   const isBj = !!BJ_TABLES[S.game];
   $('game-bj').hidden = !isBj;
-  $('game-tcp').hidden = S.game !== 'tcp';
-  $('game-rewards').hidden = S.game !== 'rewards';
+  // Online play covers the blackjack tables so far; the rest uses browser chips.
+  const offOnly = online() && (S.game === 'tcp' || S.game === 'rewards');
+  $('game-tcp').hidden = S.game !== 'tcp' || offOnly;
+  $('game-rewards').hidden = S.game !== 'rewards' || offOnly;
+  $('game-offonly').hidden = !offOnly;
   $('game-home').hidden = S.game !== 'home';
-  if (S.game === 'rewards') econRenderRewards();
+  if (S.game === 'rewards' && !offOnly) econRenderRewards();
   if (S.game === 'home') renderHome();
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.game === S.game));
   if (isBj) {
@@ -2191,7 +2224,7 @@ const now = () => new Date(Date.now());   // one clock, so tests can move time
 
 const econLevel = () => ECON.levelFromXp(S.econ.xp);
 const econTier = () => ECON.tierIndex(econLevel().level);
-const econMaxBet = () => ECON.TIERS[econTier()].maxBet;
+const econMaxBet = () => (online() ? ON.wallet.rank.maxBet : ECON.TIERS[econTier()].maxBet);
 
 /** The ONLY way chips enter or leave outside a game. Recorded in the ledger. */
 function econGrant(kind, amount) {
@@ -2372,12 +2405,12 @@ function renderHome() {
 const r0 = n => n.toLocaleString();
 
 /* ===========================================================================
-   ACCOUNTS (Supabase). Stage 2, step 1: sign-in and profiles only.
+   ACCOUNTS (Supabase): sign-in and profiles.
    ---------------------------------------------------------------------------
    Plain fetch() against Supabase's Auth and REST endpoints, no library, so
    index.html stays dependency-free (hard rule 4). Nothing here touches chips,
-   cards or odds: balances still live in this browser until dealing moves to
-   the server (step 2). The publishable key below is public by design; the
+   cards or odds; online play is the ONLINE PLAY section below, and its chips
+   live on the server. The publishable key below is public by design; the
    row-level security in supabase/migrations/ is what protects the data.
    Off when opened from a file, and absent in the Node harnesses.
    =========================================================================== */
@@ -2461,6 +2494,7 @@ async function acctRefresh() {
   profile = rows && rows[0] || null;
   if (profile) acct.pick = profile.avatar;
   renderAccount(); econRenderHeader();
+  await onBoot();
 }
 
 async function acctSendLink(email) {
@@ -2499,7 +2533,7 @@ async function acctSave(name) {
 async function acctSignOut() {
   const token = auth && auth.access_token;
   auth = null; profile = null; acct = { msg: '', busy: false, editing: false, pick: 'fox', sent: '' };
-  authStore(); renderAccount(); econRenderHeader();
+  authStore(); onStop(); renderAccount(); econRenderHeader();
   if (token) { try { await sb('/auth/v1/logout', { method: 'POST', token }); } catch (e) { /* already gone */ } }
 }
 
@@ -2511,7 +2545,11 @@ function avatarPickerHTML() {
 function renderAccount() {
   const el = $('homeAccount');
   if (!el) return;
-  const note = '<div class="sub">Profiles only, for now. Your chips still live in this browser; shared balances arrive when dealing moves to the server.</div>';
+  const note = auth
+    ? '<div class="sub">Signed in, Blackjack and Free Bet play online: a server wallet that started at ' + RULES.startingChips.toLocaleString() +
+      ' chips, dealt on the server so nobody can edit chips or peek at cards. Poker, wheels, quests and the vault stay on this browser\'s chips for now; the Online/Offline button under your chips switches.</div>'
+    : '<div class="sub">Signing in starts online play for Blackjack and Free Bet with a fresh ' + RULES.startingChips.toLocaleString() +
+      '-chip server wallet. Your offline chips here stay as they are.</div>';
   const msg = acct.msg ? `<div class="sub lost">${acct.msg}</div>` : '';
   let html = '<h3>Your account</h3>';
   if (!cloudOn()) {
@@ -2557,6 +2595,222 @@ async function acctBoot() {
     renderAccount();
   }
   if (auth && !profile) showGame('home');   // just signed in: take them to name + avatar
+}
+
+/* ===========================================================================
+   ONLINE PLAY (Stage 2): Blackjack and Free Bet against the `play` Edge Function
+   ---------------------------------------------------------------------------
+   Signed in, the blackjack tables deal on the server (supabase/functions/play,
+   the same blackjack-core.js) and chips live in a server wallet that only the
+   server can write. The page sends clicks and draws what comes back: it never
+   computes a payout, never moves an online chip, and never has the shoe or,
+   until the round is over, the dealer's hole card.
+
+   The table renderer is shared with offline play: TS() and bankroll() point at
+   ON while online(), and a server view is a round with its rules re-attached
+   and the hole card as null (always drawn face down). Stats, history and the
+   bet sizes are display-only and kept in localStorage under ONLINE_KEY.
+
+   Not online yet (offline only): Three Card Poker, wheels, quests, vault, shop.
+   The Online/Offline button by the chips switches modes.
+   =========================================================================== */
+
+const ONLINE_KEY = 'casino.online.v1';
+const ONLINE_GAMES = ['bj', 'fb'];
+
+/** True when the blackjack tables are playing online right now. */
+function online() { return !!(ON && ON.on && ON.wallet && auth); }
+
+function onPrefs() {
+  try { return JSON.parse(localStorage.getItem(ONLINE_KEY) || 'null') || {}; } catch (e) { return {}; }
+}
+function onSave() {
+  if (!ON) return;
+  const keep = ts => ({ bet: ts.bet, side: ts.side, stats: ts.stats, history: ts.history.slice(-200) });
+  try {
+    localStorage.setItem(ONLINE_KEY, JSON.stringify({ user: ON.user, on: ON.on, bj: keep(ON.ts.bj), fb: keep(ON.ts.fb) }));
+  } catch (e) { /* storage blocked: display stats just won't survive a reload */ }
+}
+
+/** Copy a server table view into ON.ts[t], in the shape the renderer reads. */
+function onApply(t, view) {
+  const ts = ON.ts[t], rules = BJ_TABLES[t].rules;
+  ts.seq = view.seq;
+  ts.round = view.round ? Object.assign({}, view.round, { rules }) : null;
+  ts.last = view.last ? Object.assign({}, view.last, { rules }) : null;
+  // Only the counts: the cards stay on the server.
+  ts.shoe = view.shoe ? { decks: view.shoe.decks, cards: { length: view.shoe.size }, pos: view.shoe.dealt, cut: view.shoe.cut } : null;
+}
+
+/** POST to the table server. Returns its JSON, or throws on a network failure. */
+async function onCall(body) {
+  const token = await authToken();
+  if (!token) return { ok: false, error: 'signed_out', message: 'Your sign-in expired. Send yourself a new link.' };
+  const res = await fetch(CLOUD.url + '/functions/v1/play', {
+    method: 'POST',
+    headers: { apikey: CLOUD.key, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  let data = null;
+  try { data = await res.json(); } catch (e) { /* not JSON */ }
+  if (!data) throw new Error('HTTP ' + res.status);
+  return data;
+}
+
+/** After sign-in: load the wallet and both tables from the server. */
+async function onBoot() {
+  if (!cloudOn() || !auth || !auth.user) return;
+  if (ON && ON.user === auth.user.id && ON.wallet) return;
+  const p = onPrefs();
+  const mine = p.user === auth.user.id ? p : {};
+  ON = { user: auth.user.id, on: mine.on !== false, wallet: null, busy: false, ts: {} };
+  for (const t of ONLINE_GAMES) {
+    const b = blankBj();
+    if (mine[t]) { b.bet = mine[t].bet || b.bet; b.side = mine[t].side || b.side; b.stats = mine[t].stats || b.stats; b.history = mine[t].history || []; }
+    b.seq = 0;
+    ON.ts[t] = b;
+  }
+  try {
+    const d = await onCall({ op: 'state' });
+    if (!d.ok) throw new Error(d.message);
+    ON.wallet = d.wallet;
+    for (const t of ONLINE_GAMES) onApply(t, d.tables[t]);
+  } catch (e) {
+    toast('info', 'Online play unavailable', 'Couldn\'t reach the table server, so the tables are using this browser\'s chips. Reload to try again.');
+  }
+  onRefreshUI();
+}
+
+/** Signed out: back to offline play. */
+function onStop() {
+  if (!ON) return;
+  ON = null;
+  onRefreshUI();
+}
+
+/** The Online / Offline button. */
+function onToggle() {
+  if (!ON || !ON.wallet || ON.busy || animBusy()) return;
+  ON.on = !ON.on;
+  onSave();
+  onRefreshUI();
+  toast('info', ON.on ? 'Playing online' : 'Playing offline',
+    ON.on ? 'Blackjack and Free Bet use your server chips.' : 'Every table uses this browser\'s chips. Your online chips are safe on the server.');
+}
+
+function renderMode() {
+  const b = $('modeBtn');
+  if (!b) return;
+  const avail = !!(ON && ON.wallet && auth);
+  b.hidden = !avail;
+  b.classList.toggle('on', online());
+  b.textContent = online() ? '● Online' : '○ Offline';
+  b.title = online()
+    ? 'Blackjack and Free Bet deal on the server, with server chips. Click to play offline with this browser\'s chips.'
+    : 'Playing with this browser\'s chips. Click to play Blackjack and Free Bet online.';
+  $('bankLbl').textContent = online() ? 'online chips' : 'chips';
+}
+
+/** Redraw everything that depends on which mode is on. */
+function onRefreshUI() {
+  for (const t of ONLINE_GAMES) delete bjShown[t];   // don't animate from the other mode's cards
+  railShown = null;
+  if (BJ_TABLES[S.game]) $('bjMsg').textContent = online() ? 'Playing online: your chips and the cards are on the server.' : '';
+  renderBank(); econRenderHeader(); renderMode();
+  showGame(S.game);
+}
+
+/** The Rescue Wheel's published odds, from ECON (the server spins the same wheel). */
+function onRescueOdds() {
+  const w = ECON.WHEELS.rescue, total = ECON.wheelTotal(w);
+  return w.slices.map(s => `${s.chips} (${Math.round(100 * s.weight / total)}%)`).join(', ');
+}
+
+function onBrokeHint() {
+  const below = ECON.WHEELS.rescue.availableBelow;
+  if (ON.wallet.chips + ON.wallet.vault < below) {
+    return '<br><span class="pushc">Out of online chips? <button class="btn-sm" onclick="onRescue()">Spin the Rescue Wheel</button> ' +
+      `Free, any time you're under ${below}. Prizes: ${onRescueOdds()}.</span>`;
+  }
+  return bankroll() < RULES.bjMinBet ? `<br><span class="sub">Under the ${RULES.bjMinBet}-chip minimum. The Rescue Wheel opens below ${below}.</span>` : '';
+}
+
+/** Online Rescue Wheel: the server decides eligibility, spins, and pays it through the ledger. */
+async function onRescue() {
+  if (!online() || ON.busy) return;
+  ON.busy = true;
+  let d;
+  try { d = await onCall({ op: 'rescue' }); }
+  catch (e) { d = { ok: false, message: 'Connection problem. Try again.' }; }
+  if (!ON) return;
+  ON.busy = false;
+  if (d.wallet) ON.wallet = d.wallet;
+  railShown = null;
+  renderBank(); econRenderHeader();
+  if (d.ok) {
+    toast('rescue', 'Rescue Wheel', `+${d.spin.chips} chips. Back to the table!`);
+    if (BJ_TABLES[S.game]) { $('bjMsg').textContent = `Rescue Wheel: +${d.spin.chips} chips.`; bjRender(); }
+  } else if (BJ_TABLES[S.game]) {
+    $('bjMsg').textContent = d.message || 'The Rescue Wheel isn\'t available right now.';
+  }
+}
+
+async function onDeal() {
+  const ts = TS();
+  if (ON.busy || ts.round) return;
+  const side = {};
+  for (const k of BJ_SIDE_KEYS) if (T().rules[k] && ts.side[k] > 0) side[k] = ts.side[k];
+  const total = ts.bet + Object.values(side).reduce((a, b) => a + b, 0);
+  // The server checks all of this again; these are just quicker messages.
+  if (Math.max(ts.bet, ...Object.values(side)) > econMaxBet()) {
+    $('bjMsg').textContent = `Your table limit is ${econMaxBet().toLocaleString()} per bet. Rank up to raise it.`; return;
+  }
+  if (bankroll() < total) {
+    $('bjMsg').innerHTML = 'Not enough chips for the main bet plus side bets.' + onBrokeHint(); return;
+  }
+  await onSend({ op: 'deal', table: bjTable, seq: ts.seq, bet: ts.bet, side });
+}
+
+async function onAct(action) {
+  const t = bjTable, ts = TS(), r = ts.round;
+  if (ON.busy || !r || !BJ.legalActions(r, bankroll())[action]) return;
+  const free = BJ.freeOffers(r);
+  await onSend({ op: 'act', table: t, seq: ts.seq, action: action }, () => {
+    const st = ON.ts[t].stats;
+    if (action === 'double') st[free.double ? 'freeDoubles' : 'doubles']++;
+    if (action === 'split') st[free.split ? 'freeSplits' : 'splits']++;
+    if (action === 'insure') st.insured++;
+  });
+}
+
+/** Send one deal/act, then draw the result exactly as an offline round would be drawn. */
+async function onSend(body, onOk) {
+  const t = body.table;
+  ON.busy = true;
+  let d = null;
+  try { d = await onCall(body); }
+  catch (e) {
+    // The request may or may not have reached the server: ask what's true now.
+    try { d = await onCall({ op: 'state' }); if (d.ok) { ON.wallet = d.wallet; onApply(t, d.tables[t]); } } catch (e2) { /* still offline */ }
+    d = { ok: false, message: 'Connection problem. The table shows what the server has; try again.' };
+  }
+  if (!ON) return;            // signed out meanwhile
+  ON.busy = false;
+  if (d.error === 'signed_out') { $('bjMsg').textContent = d.message; onStop(); return; }
+  if (d.wallet) ON.wallet = d.wallet;
+  if (d.view) onApply(t, d.view);   // refusals carry the current view too (e.g. another tab moved first)
+  econRenderHeader();
+  if (bjTable !== t || !online()) { onSave(); renderBank(); return; }   // switched tables/mode mid-request
+  if (!d.ok) {
+    $('bjMsg').textContent = d.message || 'The server refused that.';
+    renderBank(); bjRender();
+    return;
+  }
+  if (onOk) onOk();
+  const prefix = d.shuffled ? 'New shoe shuffled. ' : '';
+  const ts = ON.ts[t];
+  if (ts.round) { bjAfter(prefix); onSave(); }
+  else if (ts.last) bjSettle(ts.last, prefix);   // records display stats, draws the result
 }
 
 /* ---------- quest claiming ---------- */
@@ -2921,16 +3175,19 @@ function applyCosmetics() {
 /* ---------- rendering ---------- */
 
 function econRenderHeader() {
-  const lv = econLevel(), tier = ECON.TIERS[econTier()];
+  const on = online();
+  const lv = on ? ON.wallet.rank : econLevel();   // online rank is the server's (same ECON math)
   $('rankLevel').textContent = `Lv ${lv.level}`;
   $('rankWho').innerHTML = profile ? `${AVATAR_ICON[profile.avatar] || ''} ${profile.display_name} &middot; ` : '';
-  $('rankTier').textContent = tier.name;
+  $('rankTier').textContent = on ? lv.tierName : ECON.TIERS[econTier()].name;
   $('rankTitle').textContent = ECON.SHOP_BY_ID[S.econ.equipped.title].text;
   $('xpFill').style.width = (100 * lv.into / lv.need).toFixed(1) + '%';
   $('xpText').textContent = `${lv.into} / ${lv.need} XP`;
   const live = ECON.activeEvents(now());
   $('eventBar').hidden = !live.length;
-  $('eventBar').innerHTML = live.map(e => `<strong>${e.name}</strong> is on: ${e.desc}`).join('<br>');
+  $('eventBar').innerHTML = live.map(e => `<strong>${e.name}</strong> is on: ${e.desc}`).join('<br>') +
+    (on ? '<br><span class="sub">Events apply to offline play for now; online play gets them soon.</span>' : '');
+  if (typeof renderMode === 'function') renderMode();
 }
 
 function fmtWait(ms) {
@@ -3272,6 +3529,8 @@ for (const a of BJ_ACTIONS) bjBtn(a).onclick = () => { if (!animBusy()) bjAct(a)
 $('bjInsure').onclick = () => { if (!animBusy()) bjAct('insure'); };
 $('bjNoInsure').onclick = () => { if (!animBusy()) bjAct('decline'); };
 $('peek').addEventListener('change', () => bjRender());
+$('modeBtn').onclick = () => onToggle();
+$('offonlyBtn').onclick = () => onToggle();
 
 document.addEventListener('keydown', e => {
   if (!BJ_TABLES[S.game] || e.ctrlKey || e.metaKey || e.altKey) return;
