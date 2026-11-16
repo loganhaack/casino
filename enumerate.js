@@ -16,94 +16,17 @@
 'use strict';
 
 // ---------------------------------------------------------------------------
-// Card model
+// The game under test
 // ---------------------------------------------------------------------------
-// A card is an integer 0..51.  rank = card % 13  (0 = Two ... 12 = Ace)
-//                              suit = (card / 13) | 0
+// eval3(), categorize6() and the paytables are NOT defined here: they come from
+// the same files the page and the online server play with (tcp-core.js and
+// tables.js). So this enumerates the game as dealt, not a copy of it.
 
-const RANK_NAMES = ['2','3','4','5','6','7','8','9','T','J','Q','K','A'];
-const SUIT_NAMES = ['c','d','h','s'];
-
-const rankOf = (c) => c % 13;
-const suitOf = (c) => (c / 13) | 0;
-const cardName = (c) => RANK_NAMES[rankOf(c)] + SUIT_NAMES[suitOf(c)];
-
-// ---------------------------------------------------------------------------
-// Three-card hand evaluation
-// ---------------------------------------------------------------------------
-// Categories, low to high. Note: in Three Card Poker a STRAIGHT BEATS A FLUSH,
-// because straights are harder to make with only three cards.
-
-const CAT3 = {
-  HIGH_CARD:      0,
-  PAIR:           1,
-  FLUSH:          2,
-  STRAIGHT:       3,
-  TRIPS:          4,
-  STRAIGHT_FLUSH: 5,
-};
-
-const CAT3_NAMES = [
-  'High card', 'Pair', 'Flush', 'Straight', 'Three of a kind', 'Straight flush',
-];
-
-/*
- * Returns a single integer encoding both category and kickers, such that
- * a numerically larger value is always the stronger hand.
- *
- *   value = category * 2^20  +  tiebreak
- *
- * The tiebreak packs the ordered ranks into three 5-bit fields.
- */
-function eval3(a, b, c) {
-  let r0 = rankOf(a), r1 = rankOf(b), r2 = rankOf(c);
-
-  // sort the three ranks descending (hand-rolled, this runs 400M+ times)
-  let t;
-  if (r0 < r1) { t = r0; r0 = r1; r1 = t; }
-  if (r1 < r2) { t = r1; r1 = r2; r2 = t; }
-  if (r0 < r1) { t = r0; r0 = r1; r1 = t; }
-
-  const isFlush = (suitOf(a) === suitOf(b)) && (suitOf(b) === suitOf(c));
-
-  // Straight: three consecutive ranks, plus the A-2-3 wheel.
-  // Ace is rank 12; the wheel is A,3,2 -> sorted descending [12, 1, 0].
-  let isStraight = false;
-  let straightHigh = r0;
-  if (r0 === r1 + 1 && r1 === r2 + 1) {
-    isStraight = true;
-  } else if (r0 === 12 && r1 === 1 && r2 === 0) {
-    isStraight = true;
-    straightHigh = 1; // wheel is the lowest straight, 3-high
-  }
-
-  let cat, tie;
-
-  if (isStraight && isFlush) {
-    cat = CAT3.STRAIGHT_FLUSH;
-    tie = straightHigh;
-  } else if (r0 === r1 && r1 === r2) {
-    cat = CAT3.TRIPS;
-    tie = r0;
-  } else if (isStraight) {
-    cat = CAT3.STRAIGHT;
-    tie = straightHigh;
-  } else if (isFlush) {
-    cat = CAT3.FLUSH;
-    tie = (r0 << 10) | (r1 << 5) | r2;
-  } else if (r0 === r1 || r1 === r2) {
-    cat = CAT3.PAIR;
-    // pair rank dominates, then the odd card
-    const pairRank = (r0 === r1) ? r0 : r1;
-    const kicker   = (r0 === r1) ? r2 : r0;
-    tie = (pairRank << 5) | kicker;
-  } else {
-    cat = CAT3.HIGH_CARD;
-    tie = (r0 << 10) | (r1 << 5) | r2;
-  }
-
-  return (cat << 20) | tie;
-}
+const TCP = require("./tcp-core.js");
+const RULES = require("./tables.js").tcp;
+const { eval3, categorize6, CAT_KEY } = TCP;
+const CAT3_NAMES = TCP.CAT_NAME;
+const CAT5_NAMES = TCP.CAT5_NAME;
 
 const categoryOf = (value) => value >>> 20;
 
@@ -119,7 +42,7 @@ function buildLookup() {
   for (let a = 0; a < 50; a++) {
     for (let b = a + 1; b < 51; b++) {
       for (let c = b + 1; c < 52; c++) {
-        LOOKUP[a * 2704 + b * 52 + c] = eval3(a, b, c);
+        LOOKUP[a * 2704 + b * 52 + c] = eval3(a, b, c).value;
       }
     }
   }
@@ -144,23 +67,12 @@ function enumerateHandCategories() {
   return { counts, total };
 }
 
-// Pair Plus paytable (the common "1-3-6-30-40" version).
-// Edit these to match whatever your local casino actually spreads.
-const PAIR_PLUS_PAYS = {
-  [CAT3.PAIR]:           1,
-  [CAT3.FLUSH]:          3,
-  [CAT3.STRAIGHT]:       6,
-  [CAT3.TRIPS]:         30,
-  [CAT3.STRAIGHT_FLUSH]: 40,
-};
-
-// Ante Bonus — paid on the ante regardless of the dealer qualifying
-// or of whether you beat them.
-const ANTE_BONUS_PAYS = {
-  [CAT3.STRAIGHT]:       1,
-  [CAT3.TRIPS]:          4,
-  [CAT3.STRAIGHT_FLUSH]: 5,
-};
+// Paytables from tables.js, re-keyed by category index for the inner loops.
+const byCat = (table, keys) => Object.fromEntries(
+  keys.map((k, i) => [i, k ? (table[k] || 0) : 0]).filter(([, v]) => v > 0));
+const PAIR_PLUS_PAYS      = byCat(RULES.pairPlus, CAT_KEY);
+const ANTE_BONUS_PAYS     = byCat(RULES.anteBonus, CAT_KEY);
+const SIX_CARD_BONUS_PAYS = byCat(RULES.sixCard, TCP.CAT5_KEY);
 
 // ---------------------------------------------------------------------------
 // Pass 2 — Ante/Play, full head-to-head enumeration
@@ -168,17 +80,9 @@ const ANTE_BONUS_PAYS = {
 // Strategy: raise on Q-6-4 or better, otherwise fold.
 // Dealer qualifies on Queen-high or better.
 
-const Q64_THRESHOLD = eval3(
-  10,        // Qc  (rank 10 = Queen, suit 0)
-  13 + 4,    // 6d  (rank 4  = Six,   suit 1)
-  26 + 2     // 4h  (rank 2  = Four,  suit 2)
-); // deliberately offsuit and unconnected, so this is a plain high-card hand
-
-const DEALER_QUALIFY = eval3(10, 13 + 4, 26 + 2); // same bar: Q-6-4... see note
-
-// The dealer actually qualifies on Q-high ANY kicker, which is a lower bar than
-// Q-6-4. Lowest qualifying dealer hand is Q-3-2 offsuit.
-const DEALER_QUALIFY_MIN = eval3(10, 13 + 1, 26 + 0); // Qc 3d 2h
+// Strategy and qualifying bars, the same constants the page uses.
+const Q64_THRESHOLD = TCP.Q64;          // Q-6-4 offsuit
+const DEALER_QUALIFY_MIN = TCP.QUALIFY; // dealer qualifies on Q-high any kicker (Q-3-2 is the lowest)
 
 function enumerateAntePlay() {
   const deck = [];
@@ -269,87 +173,9 @@ function enumerateAntePlay() {
 // Determined in a single pass per 6-card hand rather than by testing all
 // C(6,5) = 6 subsets.
 
-const CAT5_NAMES = [
-  'Nothing', 'Pair', 'Two pair', 'Three of a kind', 'Straight',
-  'Flush', 'Full house', 'Four of a kind', 'Straight flush', 'Royal flush',
-];
-
-// Six Card Bonus, Wizard of Odds "pay table 1" — the most common spread.
-// NOTE: three of a kind pays here. Leaving it out (an easy mistake) swings
-// the house edge by roughly 25 percentage points, which is exactly the kind
-// of error the enumerator exists to catch.
-const SIX_CARD_BONUS_PAYS = {
-  3:    7,   // Three of a kind
-  4:   10,   // Straight
-  5:   15,   // Flush
-  6:   20,   // Full house
-  7:  100,   // Four of a kind
-  8:  200,   // Straight flush
-  9: 1000,   // Royal flush
-};
-
-// Straight detection over a 13-bit rank mask.
-// Returns the high rank of the best straight, or -1.
-function bestStraight(mask) {
-  // wheel: A-2-3-4-5  ->  needs A(12), 5(3), 4(2), 3(1), 2(0)
-  const WHEEL = (1 << 12) | (1 << 3) | (1 << 2) | (1 << 1) | 1;
-  for (let high = 12; high >= 4; high--) {
-    const need = (1 << high) | (1 << (high - 1)) | (1 << (high - 2)) |
-                 (1 << (high - 3)) | (1 << (high - 4));
-    if ((mask & need) === need) return high;
-  }
-  if ((mask & WHEEL) === WHEEL) return 3;
-  return -1;
-}
-
-// Hoisted scratch buffers — categorize6 runs 20.3M times, so allocating
-// fresh arrays per call would spend most of the runtime in the GC.
-const _rankCount = new Int32Array(13);
-const _suitMask  = new Int32Array(4);
-const _suitCount = new Int32Array(4);
-
-function categorize6(cards) {
-  const rankCount = _rankCount.fill(0);
-  const suitMask  = _suitMask.fill(0);   // rank bitmask per suit
-  const suitCount = _suitCount.fill(0);
-  let mask = 0;
-
-  for (let i = 0; i < 6; i++) {
-    const c = cards[i];
-    const r = c % 13;
-    const s = (c / 13) | 0;
-    rankCount[r]++;
-    suitMask[s] |= (1 << r);
-    suitCount[s]++;
-    mask |= (1 << r);
-  }
-
-  // flush / straight flush
-  for (let s = 0; s < 4; s++) {
-    if (suitCount[s] >= 5) {
-      const sf = bestStraight(suitMask[s]);
-      if (sf === 12) return 9;           // royal
-      if (sf >= 0)   return 8;           // straight flush
-      return 5;                          // plain flush
-    }
-  }
-
-  let trips = 0, pairs = 0, quads = 0;
-  for (let r = 0; r < 13; r++) {
-    const n = rankCount[r];
-    if (n === 4) quads++;
-    else if (n === 3) trips++;
-    else if (n === 2) pairs++;
-  }
-
-  if (quads) return 7;
-  if (trips >= 2 || (trips === 1 && pairs >= 1)) return 6;  // full house
-  if (bestStraight(mask) >= 0) return 4;
-  if (trips === 1) return 3;
-  if (pairs >= 2) return 2;
-  if (pairs === 1) return 1;
-  return 0;
-}
+// Six Card Bonus paytable: see tables.js. NOTE three of a kind pays there.
+// Leaving it out (an easy mistake) swings the house edge by roughly 25
+// percentage points, which is exactly the kind of error this exists to catch.
 
 function enumerateSixCardBonus() {
   const counts = new Array(10).fill(0);
@@ -432,7 +258,7 @@ function main() {
   console.log(`\nSanity check: C(52,3) = 22,100 ... ${total === 22100 ? 'PASS' : 'FAIL'}`);
 
   // ---- Pair Plus ----------------------------------------------------------
-  header('2. PAIR PLUS  (paytable 1-3-6-30-40)');
+  header(`2. PAIR PLUS  (paytable ${[1, 2, 3, 4, 5].map(i => PAIR_PLUS_PAYS[i] || 0).join('-')})`);
   console.log(
     pad('Hand', 18) + padL('Pays', 7) + padL('Combinations', 14) +
     padL('Probability', 15) + padL('Return', 13)
@@ -506,7 +332,7 @@ function main() {
   const scb = enumerateSixCardBonus();
   console.log(`done in ${((Date.now() - t3) / 1000).toFixed(2)}s`);
 
-  header('5. SIX CARD BONUS  (pay table 1: 1000-200-100-20-15-10-7)');
+  header(`5. SIX CARD BONUS  (pay table ${[9, 8, 7, 6, 5, 4, 3].map(i => SIX_CARD_BONUS_PAYS[i] || 0).join('-')})`);
   console.log(
     pad('Best 5 of 6', 20) + padL('Pays', 7) + padL('Combinations', 14) +
     padL('Probability', 15) + padL('Return', 13)
@@ -562,6 +388,18 @@ function main() {
   };
 
   require('fs').writeFileSync('expected.json', JSON.stringify(out, null, 2));
+
+  // The page shows TABLE_RULES.tcpHouseEdge. It must be what was just computed.
+  const shown = require('./tables.js').tcpHouseEdge;
+  const computed = { ante: -evPerAnte, pairPlus: -ppReturn, sixCard: -scbReturn };
+  let edgesOk = true;
+  console.log('');
+  for (const k of Object.keys(computed)) {
+    const same = Math.abs(shown[k] - computed[k]) < 5e-7;
+    edgesOk = edgesOk && same;
+    console.log(`Displayed edge ${k.padEnd(9)} ${(shown[k] * 100).toFixed(4)}% vs exact ${(computed[k] * 100).toFixed(4)}% ... ${same ? 'PASS' : 'FAIL (update tcpHouseEdge in tables.js)'}`);
+  }
+  if (!edgesOk) process.exitCode = 1;
 
   console.log('');
   rule();

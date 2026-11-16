@@ -27,6 +27,7 @@ const path = require('path');
 const BJ = require('./blackjack-core.js');
 const TABLE_RULES = require('./tables.js');
 const PLAY = require('./supabase/functions/play/logic.js');
+const TCP = require('./tcp-core.js');
 
 const ROUNDS = parseInt(process.argv[2], 10) || 20000;
 let pass = 0, fail = 0;
@@ -108,7 +109,9 @@ function checkView(res, label) {
   ok(!/"pos"/.test(json), label + ': shoe position object was sent');
   const views = res.tables ? Object.values(res.tables) : res.view ? [res.view] : [];
   for (const v of views) {
-    if (v.round && v.round.phase !== 'done') {
+    if (v.round && v.round.bets) {        // Three Card Poker: no dealer card shows before the hand ends
+      ok(v.round.dealer.length === 3 && v.round.dealer.every(c => c === null), label + ': TCP dealer card visible mid-hand');
+    } else if (v.round && v.round.phase !== 'done') {
       ok(v.round.dealer.length === 2 && v.round.dealer[1] === null, label + ': hole card visible mid-round');
     }
     if (v.round) ok(!('rules' in v.round), label + ': rules blob sent');
@@ -160,7 +163,7 @@ async function main() {
       [{ bet: 502 }, 'over_limit'], [{ side: { perfectPairs: 600 } }, 'over_limit'],
       [{ side: { perfectPairs: -5 } }, 'bad_request'], [{ side: { perfectPairs: 2.5 } }, 'bad_request'],
       [{ side: { jackpot: 5 } }, 'bad_request'], [{ side: [5] }, 'bad_request'],
-      [{ seq: 3 }, 'stale'], [{ table: 'tcp' }, 'bad_request'],
+      [{ seq: 3 }, 'stale'], [{ table: 'slots' }, 'bad_request'],
     ];
     for (const [o, code] of cases) {
       const r = await tryDeal(o);
@@ -519,6 +522,128 @@ async function main() {
       ok(same, t + ': server rounds identical to the engine driven directly');
     }
     report('300 rounds per table: identical cards and nets to driving blackjack-core.js directly', f);
+  }
+
+  section('three card poker');
+  {
+    const f = fail, st = memStore();
+    await PLAY.handle(st, 'u', { op: 'state' });
+    const deal = (bets, o) => PLAY.handle(st, 'u', Object.assign({ op: 'deal', table: 'tcp', seq: 0, bets }, o || {}));
+    const cases = [
+      [{ ante: 3 }, 'bad_bet'], [{ ante: 7 }, 'bad_bet'], [{ ante: -5 }, 'bad_bet'], [{ ante: 5.5 }, 'bad_bet'],
+      [{ ante: '5' }, 'bad_bet'], [{}, 'bad_bet'], [{ ante: 0, pp: 0, scb: 0 }, 'bad_bet'],
+      [{ ante: 5, jackpot: 5 }, 'bad_request'], [[5], 'bad_request'], [null, 'bad_request'],
+      [{ ante: 505 }, 'over_limit'], [{ pp: 505 }, 'over_limit'],
+      [{ ante: 500, pp: 500, scb: 5 }, 'not_enough_chips'],
+    ];
+    for (const [b, code] of cases) {
+      const r = await deal(b);
+      ok(!r.ok && r.error === code, `tcp deal ${JSON.stringify(b)} should be ${code}, got ${r.error}`);
+    }
+    ok((await deal({ ante: 5 }, { seq: 2 })).error === 'stale', 'stale seq refused');
+    ok((await PLAY.handle(st, 'u', { op: 'act', table: 'tcp', seq: 0, action: 'play' })).error === 'no_round', 'act with no hand refused');
+    ok(st.ledger.length === 1 && st.wallets.get('u').chips === 1000, 'refused requests wrote nothing');
+
+    // Can't make the Play bet without the chips for it; folding is always allowed.
+    let r = await deal({ ante: 400, pp: 400 });
+    ok(r.ok && r.view.round && r.view.legal.play === false && r.view.legal.fold === true, 'play not offered with 200 chips vs a 400 ante');
+    checkView(r, 'tcp deal');
+    const st0 = await PLAY.handle(st, 'u', { op: 'state' });
+    checkView(st0, 'state mid-hand');
+    ok(st0.tables.tcp.round && st0.tables.tcp.round.dealer.every(c => c === null), 'state hides the dealer mid-hand');
+    ok((await PLAY.handle(st, 'u', { op: 'act', table: 'tcp', seq: r.view.seq, action: 'hit' })).error === 'bad_request', 'blackjack action refused');
+    const p = await PLAY.handle(st, 'u', { op: 'act', table: 'tcp', seq: r.view.seq, action: 'play' });
+    ok(!p.ok && p.error === 'not_enough_chips', 'play without the chips refused');
+    const d2 = await PLAY.handle(st, 'u', { op: 'deal', table: 'tcp', seq: r.view.seq, bets: { ante: 5 } });
+    ok(!d2.ok && d2.error === 'round_in_progress', 'second deal mid-hand refused');
+    const fo = await PLAY.handle(st, 'u', { op: 'act', table: 'tcp', seq: r.view.seq, action: 'fold' });
+    ok(fo.ok && !fo.view.round && fo.view.last.result.outcome === 'fold' && fo.view.last.dealer.every(c => c !== null), 'fold settles and reveals');
+    ok(st.wallets.get('u').chips === st.ledgerSum('u'), 'ledger identity after fold');
+
+    // Side bets only: settles on the deal, no decision.
+    r = await PLAY.handle(st, 'u', { op: 'deal', table: 'tcp', seq: fo.view.seq, bets: { pp: 5, scb: 5 } });
+    ok(r.ok && !r.view.round && r.view.last.phase === 'done' && r.view.last.result.outcome === 'n/a', 'side bets only settle at once');
+
+    // Chips in a TCP hand count against "broke" for the Rescue Wheel.
+    const w = st.wallets.get('u');
+    await st.commit('u', w.version, { chips: 55, vault: 0, econ: w.econ, ledger: [{ account: 'chips', amount: 55 - w.chips, kind: 'shop' }] });   // 5 left on hand after a 50 ante
+    r = await PLAY.handle(st, 'u', { op: 'deal', table: 'tcp', seq: r.view.seq, bets: { ante: 50 } });
+    const sp = await PLAY.handle(st, 'u', { op: 'spin', wheel: 'rescue' });
+    ok(r.ok && !sp.ok && sp.error === 'round_in_progress', 'rescue refused with chips in a TCP hand');
+    report('validation, play needs chips, fold, side-bets-only, hidden dealer, chips in play count as not broke', f);
+  }
+  {
+    const f = fail, st = memStore(), rnd = mulberry32(2024), randInt = seededInt(31337);
+    const N = Math.max(2000, ROUNDS >> 1);
+    let seq = 0, net = 0, folds = 0, plays = 0, sideOnly = 0, s = await PLAY.handle(st, 'p', { op: 'state' });
+    for (let i = 0; i < N; i++) {
+      const w = st.wallets.get('p');
+      if (w.chips < 600) await st.commit('p', w.version, { chips: w.chips + 5000, vault: 0, econ: w.econ, ledger: [{ account: 'chips', amount: 5000, kind: 'quests' }] });
+      const pick = () => (rnd() < 0.3 ? 0 : 5 * (1 + Math.floor(rnd() * 10)));
+      const bets = { ante: pick(), pp: pick(), scb: pick() };
+      if (!bets.ante && !bets.pp && !bets.scb) bets.ante = 10;
+      let r = await PLAY.handle(st, 'p', { op: 'deal', table: 'tcp', seq, bets }, { randInt });
+      if (!r.ok) { ok(false, 'tcp deal refused: ' + r.message); break; }
+      checkView(r, 'tcp deal');
+      seq = r.view.seq;
+      if (r.view.round) {
+        ok(st.wallets.get('p').chips === st.ledgerSum('p'), 'ledger identity mid-hand');
+        const full = st.tables.get('p/tcp').round;    // server truth, only to pick a sensible move
+        const play = rnd() < 0.15 ? rnd() < 0.5 : TCP.eval3(...full.player).value >= TCP.Q64;
+        if (play) plays++; else folds++;
+        r = await PLAY.handle(st, 'p', { op: 'act', table: 'tcp', seq, action: play ? 'play' : 'fold' }, { randInt });
+        if (!r.ok) { ok(false, 'tcp act refused: ' + r.message); break; }
+        checkView(r, 'tcp act');
+        seq = r.view.seq;
+      } else sideOnly++;
+      const last = r.view.last;
+      ok(last && last.dealer.every(c => c !== null), 'finished hand fully revealed');
+      // The server's result is exactly TCP.settle() on the revealed cards.
+      const again = TCP.settle(last.bets, last.player, last.dealer, last.raised, TABLE_RULES.tcp);
+      ok(JSON.stringify(again) === JSON.stringify(last.result), 'server result == TCP.settle on the same cards');
+      net += last.result.net;
+      const wc = st.wallets.get('p').chips;
+      ok(wc === st.ledgerSum('p'), 'chips == sum(ledger)');
+      const grants = st.ledger.filter(x => x.user === 'p' && x.account === 'chips' && !['opening', 'bet', 'payout'].includes(x.kind)).reduce((a, x) => a + x.amount, 0);
+      ok(wc === TABLE_RULES.startingChips + grants + net, 'chips == opening + grants + game net');
+      s = r;
+      if (fail - f > 20) break;
+    }
+    const games = st.ledger.filter(x => x.user === 'p' && x.table_id === 'tcp' && (x.kind === 'bet' || x.kind === 'payout')).reduce((a, x) => a + x.amount, 0);
+    ok(games === net, 'tcp bet + payout rows == sum of hand nets');
+    ok(folds > 0 && plays > 0 && sideOnly > 0, 'fuzz reached plays, folds and side-bets-only hands');
+    report(`fuzz: ${N} hands, ledger identity every request, result == TCP.settle, dealer never sent early (XP ${st.wallets.get('p').econ.xp})`, f);
+  }
+  {
+    // Same game as the page: the page deals with TCP.dealHand(randInt) and settles with TCP.settle.
+    const f = fail;
+    async function serverHands(xp, chips) {
+      const st = memStore();
+      await PLAY.handle(st, 'u', { op: 'state' });
+      const w = st.wallets.get('u');
+      await st.commit('u', w.version, { chips, vault: 0, econ: Object.assign(w.econ, { xp }), ledger: chips !== w.chips ? [{ account: 'chips', amount: chips - w.chips, kind: 'quests' }] : [] });
+      const ri = seededInt(8080), out = [];
+      let seq = 0;
+      for (let i = 0; i < 300; i++) {
+        let r = await PLAY.handle(st, 'u', { op: 'deal', table: 'tcp', seq, bets: { ante: 10, pp: 5, scb: 5 } }, { randInt: ri });
+        seq = r.view.seq;
+        r = await PLAY.handle(st, 'u', { op: 'act', table: 'tcp', seq, action: i % 3 ? 'play' : 'fold' }, { randInt: ri });
+        seq = r.view.seq;
+        out.push(JSON.stringify([r.view.last.player, r.view.last.dealer, r.view.last.result.net]));
+        const w2 = st.wallets.get('u');
+        if (w2.chips < 200) await st.commit('u', w2.version, { chips: w2.chips + 1000, vault: 0, econ: w2.econ, ledger: [{ account: 'chips', amount: 1000, kind: 'quests' }] });
+      }
+      return out;
+    }
+    const ri = seededInt(8080), direct = [];
+    for (let i = 0; i < 300; i++) {
+      const { player, dealer } = TCP.dealHand(ri);
+      direct.push(JSON.stringify([player, dealer, TCP.settle({ ante: 10, pp: 5, scb: 5 }, player, dealer, !!(i % 3), TABLE_RULES.tcp).net]));
+    }
+    const lv1 = await serverHands(0, 1000), diamond = await serverHands(500000, 200000);
+    ok(lv1.every((x, i) => x === direct[i]), 'server hands identical to TCP.dealHand + TCP.settle driven directly');
+    ok(lv1.every((x, i) => x === diamond[i]), 'Lv1 with 1,000 and Diamond with 200,000 got different hands');
+    report('300 hands: same cards and nets as the page\'s code path; Lv1 vs Diamond identical (hard rule 2)', f);
   }
 
   section('the deal is indifferent to who you are (hard rule 2)');

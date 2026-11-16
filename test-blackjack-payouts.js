@@ -84,6 +84,7 @@ const sandbox = {
   BJ,   // index.html gets this from <script src="blackjack-core.js">
   ECON: require('./economy.js'),
   TABLE_RULES: require('./tables.js'),   // index.html gets this from <script src="tables.js">
+  TCP: require('./tcp-core.js'),         // index.html gets this from <script src="tcp-core.js">
 };
 sandbox.globalThis = sandbox;
 

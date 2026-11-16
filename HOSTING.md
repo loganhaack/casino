@@ -133,7 +133,8 @@ the settled result from the server instead of computing it.
       access verified refused.
 - [x] Table rules moved into `tables.js`, one copy the page, the tests and
       the server all load.
-- [ ] Step 2: server-side balances, ledger, and blackjack dealing.
+- [x] Step 2: server-side balances, ledger, and dealing for every game
+      (Blackjack, Free Bet, Three Card Poker), plus the whole economy.
       **Decided:** fresh online start. Signed in = a server wallet starting at
       1,000 chips, with rank, quests, wheels and vault on the server too.
       Signed out = the offline game, unchanged. Local chips are not imported

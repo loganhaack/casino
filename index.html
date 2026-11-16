@@ -55,8 +55,6 @@
     border: 1px solid var(--border);
   }
   .bank .mode.on { color: var(--win); border-color: rgba(95,214,138,.45); }
-  #game-offonly .panel { margin-top: 14px; }
-  #game-offonly p { margin: 0 0 10px; line-height: 1.5; }
 
   /* ---------- table ---------- */
   .felt {
@@ -718,16 +716,6 @@
   </section>
 
   <!-- ===================== THREE CARD POKER ===================== -->
-  <section id="game-offonly" hidden>
-    <div class="panel">
-      <h3>Offline only, for now</h3>
-      <p>You're playing online: Blackjack, Free Bet, the wheels, quests, vault and shop all run on the server, so nobody can edit your chips or see the cards.
-      Three Card Poker isn't online yet; it still runs on this browser's chips.</p>
-      <p><button class="btn-sm" id="offonlyBtn">Switch to offline play</button>
-      <span class="sub">Your online chips stay safe on the server; switch back any time with the button under your chips.</span></p>
-    </div>
-  </section>
-
   <section id="game-tcp">
   <div class="felt">
     <div class="seat">
@@ -866,8 +854,11 @@
 <!-- Shared blackjack logic: one copy, also loaded by the Node tests.
      A classic script (not a module), so this still works from file://. -->
 <script src="blackjack-core.js"></script>
-<!-- Blackjack / Free Bet table rules: one copy, shared with the tests and the server. -->
+<!-- Table rules and paytables for every game: one copy, shared with the tests and the server. -->
 <script src="tables.js"></script>
+<!-- Three Card Poker logic (eval3, deal, settle): one copy, also loaded by
+     enumerate.js, the tests and the server. -->
+<script src="tcp-core.js"></script>
 <!-- Economy (ranks, wheels, quests, events, shop). Grants chips only; never
      touches game odds. Also loaded by the Node tests. -->
 <script src="economy.js"></script>
@@ -881,17 +872,12 @@
    =========================================================================== */
 
 const RULES = {
-  // Pair Plus: hand category -> payout (to 1)
-  pairPlus: { pair: 1, flush: 3, straight: 6, trips: 30, straightFlush: 40 },
-
-  // Ante Bonus: paid on the ante regardless of dealer qualifying or winning
-  anteBonus: { straight: 1, trips: 4, straightFlush: 5 },
-
-  // Six Card Bonus: best 5-card hand from your 3 + dealer's 3
-  sixCard: {
-    trips: 7, straight: 10, flush: 15, fullHouse: 20,
-    quads: 100, straightFlush: 200, royalFlush: 1000,
-  },
+  // Three Card Poker paytables live in tables.js (TABLE_RULES.tcp), the one
+  // copy the enumerator, the harness and the server read. Change them THERE,
+  // then re-run enumerate.js and test-payouts.js.
+  pairPlus:  TABLE_RULES.tcp.pairPlus,
+  anteBonus: TABLE_RULES.tcp.anteBonus,
+  sixCard:   TABLE_RULES.tcp.sixCard,
 
   // Blackjack and Free Bet rules and their measured house edges live in
   // tables.js (one copy, shared with the tests and the Stage 2 server).
@@ -904,7 +890,7 @@ const RULES = {
   bjMinBet:    TABLE_RULES.bjMinBet,
   bjBetStep:   TABLE_RULES.bjBetStep,
 
-  minBet: 5,
+  minBet: TABLE_RULES.tcp.minBet,
   startingChips: TABLE_RULES.startingChips,
   // Timed bonus, broke floor, quests, events, table limits and the shop are
   // all in economy.js (ECON). None of it can touch game odds or settlement.
@@ -923,8 +909,7 @@ const RULES = {
 
 const RANKS = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
 const SUITS = ['♣','♦','♥','♠'];
-const rankOf = c => c % 13;
-const suitOf = c => (c / 13) | 0;
+const { rankOf, suitOf } = TCP;
 
 /* ---------- RNG ----------------------------------------------------------
    crypto.getRandomValues with rejection sampling to avoid modulo bias.
@@ -943,103 +928,14 @@ function randInt(n) {
   return v % n;
 }
 
-function freshShuffledDeck() {
-  const d = new Array(52);
-  for (let i = 0; i < 52; i++) d[i] = i;
-  for (let i = 51; i > 0; i--) {         // Fisher-Yates, back to front
-    const j = randInt(i + 1);
-    const t = d[i]; d[i] = d[j]; d[j] = t;
-  }
-  return d;
-}
+function freshShuffledDeck() { return TCP.shuffledDeck(randInt); }
 
 /* ===========================================================================
-   HAND EVALUATION  (identical logic to enumerate.js)
-   Straight beats flush in Three Card Poker.
+   HAND EVALUATION AND SETTLEMENT: tcp-core.js (TCP), the same code
+   enumerate.js enumerates and the online server deals. Never copy it here.
    =========================================================================== */
 
-const CAT = {
-  HIGH: 0, PAIR: 1, FLUSH: 2, STRAIGHT: 3, TRIPS: 4, SF: 5,
-};
-const CAT_NAME = ['High card','Pair','Flush','Straight','Three of a kind','Straight flush'];
-const CAT_KEY  = ['high','pair','flush','straight','trips','straightFlush'];
-
-function eval3(a, b, c) {
-  let r0 = rankOf(a), r1 = rankOf(b), r2 = rankOf(c), t;
-  if (r0 < r1) { t = r0; r0 = r1; r1 = t; }
-  if (r1 < r2) { t = r1; r1 = r2; r2 = t; }
-  if (r0 < r1) { t = r0; r0 = r1; r1 = t; }
-
-  const flush = suitOf(a) === suitOf(b) && suitOf(b) === suitOf(c);
-
-  let straight = false, sHigh = r0;
-  if (r0 === r1 + 1 && r1 === r2 + 1) straight = true;
-  else if (r0 === 12 && r1 === 1 && r2 === 0) { straight = true; sHigh = 1; }  // A-2-3 wheel
-
-  let cat, tie;
-  if (straight && flush)            { cat = CAT.SF;       tie = sHigh; }
-  else if (r0 === r1 && r1 === r2)  { cat = CAT.TRIPS;    tie = r0; }
-  else if (straight)                { cat = CAT.STRAIGHT; tie = sHigh; }
-  else if (flush)                   { cat = CAT.FLUSH;    tie = (r0<<10)|(r1<<5)|r2; }
-  else if (r0 === r1 || r1 === r2)  {
-    cat = CAT.PAIR;
-    const pr = (r0 === r1) ? r0 : r1;
-    const kk = (r0 === r1) ? r2 : r0;
-    tie = (pr << 5) | kk;
-  }
-  else                              { cat = CAT.HIGH;     tie = (r0<<10)|(r1<<5)|r2; }
-
-  return { value: (cat << 20) | tie, cat, name: CAT_NAME[cat] };
-}
-
-// Q-6-4 offsuit, the standard play/fold threshold
-const Q64 = eval3(10, 13 + 4, 26 + 2).value;
-// Dealer qualifies on Q-high any kicker; lowest qualifier is Q-3-2
-const QUALIFY = eval3(10, 13 + 1, 26 + 0).value;
-
-/* ---------- five-of-six evaluation for the Six Card Bonus --------------- */
-
-const CAT5_NAME = ['Nothing','Pair','Two pair','Three of a kind','Straight',
-                   'Flush','Full house','Four of a kind','Straight flush','Royal flush'];
-const CAT5_KEY  = [null,null,null,'trips','straight','flush','fullHouse',
-                   'quads','straightFlush','royalFlush'];
-
-function bestStraight(mask) {
-  const WHEEL = (1<<12)|(1<<3)|(1<<2)|(1<<1)|1;
-  for (let hi = 12; hi >= 4; hi--) {
-    const need = (1<<hi)|(1<<(hi-1))|(1<<(hi-2))|(1<<(hi-3))|(1<<(hi-4));
-    if ((mask & need) === need) return hi;
-  }
-  return (mask & WHEEL) === WHEEL ? 3 : -1;
-}
-
-function categorize6(cards) {
-  const rc = new Int32Array(13), sm = new Int32Array(4), sc = new Int32Array(4);
-  let mask = 0;
-  for (const c of cards) {
-    const r = rankOf(c), s = suitOf(c);
-    rc[r]++; sm[s] |= (1 << r); sc[s]++; mask |= (1 << r);
-  }
-  for (let s = 0; s < 4; s++) {
-    if (sc[s] >= 5) {
-      const sf = bestStraight(sm[s]);
-      if (sf === 12) return 9;
-      if (sf >= 0) return 8;
-      return 5;
-    }
-  }
-  let trips = 0, pairs = 0, quads = 0;
-  for (let r = 0; r < 13; r++) {
-    if (rc[r] === 4) quads++; else if (rc[r] === 3) trips++; else if (rc[r] === 2) pairs++;
-  }
-  if (quads) return 7;
-  if (trips >= 2 || (trips === 1 && pairs >= 1)) return 6;
-  if (bestStraight(mask) >= 0) return 4;
-  if (trips === 1) return 3;
-  if (pairs >= 2) return 2;
-  if (pairs === 1) return 1;
-  return 0;
-}
+const { CAT, CAT_NAME, CAT_KEY, CAT5_NAME, CAT5_KEY, eval3, Q64, QUALIFY, categorize6 } = TCP;
 
 /* ===========================================================================
    PERSISTENT STATE
@@ -1185,7 +1081,7 @@ const EXACT = (() => {
    GAME STATE (per hand)
    =========================================================================== */
 
-let deck = [], player = [], dealer = [], phase = 'betting';
+let player = [], dealer = [], phase = 'betting';
 let tcpDealerDealAt = [];   // display only: when each dealer card's deal animation starts
 let pEval = null, dEval = null;
 
@@ -1273,7 +1169,9 @@ function emptySlots(el, n) {
 function renderCards(el, cards, faceDown, fxOf, slots = 3) {
   el.innerHTML = '';
   if (!cards.length) { emptySlots(el, slots); return; }
-  cards.forEach((c, i) => el.appendChild(cardEl(c, faceDown && !$('peek').checked, fxOf && fxOf(i))));
+  // Online, face-down cards are null (the server hasn't sent them), so there is nothing to peek at.
+  const peek = $('peek').checked && !online();
+  cards.forEach((c, i) => el.appendChild(cardEl(c, faceDown && !peek, fxOf && fxOf(i))));
 }
 
 /* ===========================================================================
@@ -1389,8 +1287,8 @@ function renderBank() {
 
 function renderBets() {
   for (const k of ['ante','pp','scb']) {
-    $('bet-' + k).innerHTML = betHTML(S.bets[k]);
-    $('box-' + k).classList.toggle('active', S.bets[k] > 0);
+    $('bet-' + k).innerHTML = betHTML(TCPS().bets[k]);
+    $('box-' + k).classList.toggle('active', TCPS().bets[k] > 0);
   }
 }
 
@@ -1423,20 +1321,28 @@ function deal() {
   }
   if (S.chips < stake) { $('msg').textContent = 'Not enough chips.' + econRescueHint(); return; }
 
-  deck = freshShuffledDeck();
-  player = [deck.pop(), deck.pop(), deck.pop()];
-  dealer = [deck.pop(), deck.pop(), deck.pop()];
-  pEval = eval3(...player);
-  dEval = eval3(...dealer);
-
+  ({ player, dealer } = TCP.dealHand(randInt));
   S.chips -= stake;
   S.tcpRound = { player, dealer, stake };   // a reload resumes this hand instead of losing the stake
+  const dealt = tcpDrawDeal(S.bets);
+  if (S.bets.ante > 0) tcpDecision(S.bets, dealt);
+  else resolve(false);   // side bets only; no decision to make
+  save();
+}
+
+/**
+ * Display only: chips out to each bet, then the cards, alternately, player
+ * first, the dealer's face down. Reads the globals player / dealer (online,
+ * the dealer's are null until the hand is over). Returns when the deal lands.
+ */
+function tcpDrawDeal(bets) {
+  pEval = eval3(...player);
+  dEval = null;
   clearResults();
   renderBank();
-  // Chips go out from your tray to each bet, then the cards: alternately, player first.
   const tc = animLeft();
-  const placed = ['ante', 'pp', 'scb'].filter(k => S.bets[k] > 0);
-  placed.forEach((k, i) => chipFly($('tcpRail'), $('bet-' + k), S.bets[k], tc + i * CHIP.gap));
+  const placed = ['ante', 'pp', 'scb'].filter(k => bets[k] > 0);
+  placed.forEach((k, i) => chipFly($('tcpRail'), $('bet-' + k), bets[k], tc + i * CHIP.gap));
   const t0 = tc + (ANIM.off ? 0 : (placed.length - 1) * CHIP.gap + CHIP.fly), now = Date.now();
   renderCards($('playerCards'), player, false, i => ({ deal: t0 + 2 * i * ANIM.step }));
   renderCards($('dealerCards'), dealer, true, i => ({ deal: t0 + (2 * i + 1) * ANIM.step }));
@@ -1446,21 +1352,47 @@ function deal() {
   $('playerHand').textContent = pEval.name;
   animLater($('playerHand'), dealt);
   $('dealerHand').textContent = '';
+  return dealt;
+}
 
-  if (S.bets.ante > 0) {
-    phase = 'decision';
-    tcpButtons(true);
-    $('msg').textContent = 'Play or fold?';
-    const should = pEval.value >= Q64;
-    $('hint').textContent = `Strategy: ${should ? 'play' : 'fold'} (threshold is Q-6-4)` +
-      (S.chips < S.bets.ante ? ' — not enough chips to raise, you must fold.' : '');
-    animLater($('msg'), dealt);
-    animLater($('hint'), dealt);
+/** Display only: waiting on play / fold. */
+function tcpDecision(bets, dealt) {
+  phase = 'decision';
+  tcpButtons(true);
+  $('msg').textContent = 'Play or fold?';
+  const should = pEval.value >= Q64;
+  $('hint').textContent = `Strategy: ${should ? 'play' : 'fold'} (threshold is Q-6-4)` +
+    (bankroll() < bets.ante ? ' — not enough chips to raise, you must fold.' : '');
+  if (dealt != null) { animLater($('msg'), dealt); animLater($('hint'), dealt); }
+}
+
+/**
+ * Display only: draw the table for the current mode's hand in progress (a
+ * reload, a switch between online and offline, a refused request), or an
+ * empty table between hands.
+ */
+function tcpRestore(note) {
+  const r = online() ? ON.tcp.round : S.tcpRound;
+  clearResults(); renderBets(); renderStats(); renderLog(); renderBank();
+  $('hint').textContent = '';
+  if (r) {
+    player = r.player; dealer = r.dealer;
+    pEval = eval3(...player); dEval = null;
+    renderCards($('playerCards'), player, false);
+    renderCards($('dealerCards'), dealer, true);
+    $('playerHand').textContent = pEval.name;
+    $('dealerHand').textContent = '';
+    tcpDecision(r.bets || S.bets, null);
+    if (note) $('msg').textContent = note + ' Play or fold?';
   } else {
-    // side bets only; no decision to make
-    resolve(false);
+    phase = 'betting';
+    player = []; dealer = []; pEval = dEval = null;
+    renderCards($('playerCards'), [], false);
+    renderCards($('dealerCards'), [], false);
+    $('playerHand').textContent = ''; $('dealerHand').textContent = '';
+    tcpButtons(false);
+    if (note) $('msg').textContent = note;
   }
-  save();
 }
 
 /* ===========================================================================
@@ -1468,9 +1400,27 @@ function deal() {
    =========================================================================== */
 
 function resolve(raised) {
+  // Settlement is TCP.settle(), the only place payouts are computed. The
+  // page moves the chips (offline) and draws the result.
+  const res = TCP.settle(S.bets, player, dealer, raised, RULES);
+  S.chips += res.returned;
+  S.tcpRound = null;
+  /* ---- economy: XP, quests, event promos. Reads the result; can't change it. ---- */
+  const econLines = econAfterRound(TCP.facts(res, S.bets, RULES.minBet));
+  tcpSettled(res, S.bets, raised, econLines);
+  save();
+}
+
+/**
+ * A settled hand, offline (resolve) or online (the server's result): turn the
+ * dealer's cards over, record display stats and history, draw the result.
+ * No chips move here. Expects the globals player / dealer to be the hand's cards.
+ */
+function tcpSettled(res, bets, raised, econLines) {
+  const on = online();
   phase = 'done';
+  bankHold(bankroll() - res.returned);   // display only: show this until the dealer's cards are revealed
   // Turn the dealer's cards over one at a time (after the deal, if it is still playing).
-  bankHold(S.chips);
   const t0 = animLeft(), now = Date.now();
   const flipStep = ANIM.step * 1.8;
   renderCards($('dealerCards'), dealer, false, i => {
@@ -1479,134 +1429,47 @@ function resolve(raised) {
   });
   const revealed = t0 + 2 * flipStep + ANIM.flip;
   animHold(revealed);
+  dEval = eval3(...dealer);
 
-  const qualified = dEval.value >= QUALIFY;
-  $('dealerHand').innerHTML = dEval.name +
-    `<span class="tag ${qualified ? 'q' : 'nq'}">${qualified ? 'qualifies' : 'does not qualify'}</span>`;
-
-  const stake = S.bets.ante + S.bets.pp + S.bets.scb + (raised ? S.bets.ante : 0);
-  let returned = 0;                 // chips handed back (stake + winnings)
-  const lines = [];
-
-  /* ---- Pair Plus ---- */
-  if (S.bets.pp > 0) {
-    const pay = RULES.pairPlus[CAT_KEY[pEval.cat]] || 0;
-    if (pay) {
-      const w = S.bets.pp * pay;
-      returned += S.bets.pp + w;
-      setResult('pp', `+${w}`, 'win');
-      lines.push(`PP ${pay}:1 +${w}`);
-    } else {
-      setResult('pp', `-${S.bets.pp}`, 'lost');
-    }
+  /* ---- bookkeeping (display stats) ---- */
+  const st = TCPS().stats, hist = TCPS().history;
+  if (bets.ante > 0) {
+    if (!raised) st.folds++;
+    if (res.qualified) st.dealerQualified++; else st.dealerNotQualified++;
   }
-  const ppRet = returned;                     // display only (chip picture), read after the fact
-
-  /* ---- Six Card Bonus ---- */
-  let scbCat = null;
-  if (S.bets.scb > 0) {
-    scbCat = categorize6([...player, ...dealer]);
-    const key = CAT5_KEY[scbCat];
-    const pay = key ? (RULES.sixCard[key] || 0) : 0;
-    if (pay) {
-      const w = S.bets.scb * pay;
-      returned += S.bets.scb + w;
-      setResult('scb', `+${w}`, 'win');
-      lines.push(`6CB ${CAT5_NAME[scbCat]} +${w}`);
-    } else {
-      setResult('scb', `-${S.bets.scb}`, 'lost');
-    }
-  }
-  const scbRet = returned - ppRet;            // display only
-
-  /* ---- Ante / Play ---- */
-  let outcome = 'n/a';
-  if (S.bets.ante > 0) {
-    const a = S.bets.ante;
-    const bonusPay = RULES.anteBonus[CAT_KEY[pEval.cat]] || 0;
-    const bonus = bonusPay * a;
-    if (bonus) { returned += bonus; lines.push(`Ante bonus ${bonusPay}:1 +${bonus}`); }
-
-    if (!raised) {
-      outcome = 'fold';
-      setResult('ante', `-${a}`, 'lost');
-      S.stats.folds++;
-    } else if (!qualified) {
-      outcome = 'no-qualify';
-      returned += a + a      // ante stake + ante win
-                + a;         // play bet pushes, returned
-      setResult('ante', `+${a}`, 'win');
-      lines.push(`Dealer no qualify: ante +${a}, play pushes`);
-    } else if (pEval.value > dEval.value) {
-      outcome = 'win';
-      returned += (a + a) + (a + a);
-      setResult('ante', `+${a * 2}`, 'win');
-      lines.push(`Beat dealer +${a * 2}`);
-    } else if (pEval.value === dEval.value) {
-      outcome = 'push';
-      returned += a + a;
-      setResult('ante', '0', 'pushc');
-      lines.push('Tie, both push');
-    } else {
-      outcome = 'lose';
-      setResult('ante', `-${a * 2}`, 'lost');
-      lines.push(`Lost to dealer -${a * 2}`);
-    }
-
-    if (qualified) S.stats.dealerQualified++; else S.stats.dealerNotQualified++;
-  }
-
-  S.chips += returned;
-  const net = returned - stake;
-
-  /* ---- bookkeeping ---- */
-  S.stats.hands++;
-  S.stats.wagered += stake;
-  S.stats.net += net;
-  S.stats.catCounts[pEval.cat]++;
-
-  S.history.push({
-    n: S.stats.hands,
+  st.hands++;
+  st.wagered += res.stake;
+  st.net += res.net;
+  st.catCounts[res.pCat]++;
+  hist.push({
+    n: st.hands,
     t: Date.now(),
     player: player.join(','),
     dealer: dealer.join(','),
-    pCat: pEval.cat,
-    pHand: pEval.name,
-    dCat: dEval.cat,
-    dHand: dEval.name,
-    qualified,
+    pCat: res.pCat,
+    pHand: res.pName,
+    dCat: res.dCat,
+    dHand: res.dName,
+    qualified: res.qualified,
     raised,
-    outcome,
-    scbCat,
-    betAnte: S.bets.ante, betPP: S.bets.pp, betSCB: S.bets.scb,
-    staked: stake,
-    net,
+    outcome: res.outcome,
+    scbCat: res.scbCat,
+    betAnte: bets.ante, betPP: bets.pp, betSCB: bets.scb,
+    staked: res.stake,
+    net: res.net,
   });
-  if (S.history.length > 5000) S.history.splice(0, S.history.length - 5000);
+  if (hist.length > 5000) hist.splice(0, hist.length - 5000);
 
-  $('msg').innerHTML = (lines.length ? lines.join(' &nbsp;|&nbsp; ') : 'No action.') +
-    `<br><strong class="${net > 0 ? 'win' : net < 0 ? 'lost' : 'pushc'}">` +
-    `Net ${net >= 0 ? '+' : ''}${net}</strong>`;
-  $('hint').textContent = '';
-  S.tcpRound = null;
-
-  /* ---- economy: XP, quests, event promos. Reads the result; can't change it. ---- */
-  const ppPay = S.bets.pp > 0 ? (RULES.pairPlus[CAT_KEY[pEval.cat]] || 0) : 0;
-  const econLines = econAfterRound({
-    game: 'tcp', wagered: stake, minBet: RULES.minBet,
-    pairPlusBet: S.bets.pp, pairPlusWin: ppPay > 0,
-    pairPlusBig: S.bets.pp > 0 && (pEval.cat === CAT.TRIPS || pEval.cat === CAT.SF),
-    tcpStraightPlus: pEval.cat >= CAT.STRAIGHT,
-  });
+  tcpShowResult(res, bets);
   if (econLines.length) $('msg').innerHTML += '<br>' + econLines.join('<br>');
-  $('msg').innerHTML += econRescueHint();
+  $('msg').innerHTML += on ? onBrokeHint() : econRescueHint();
 
   for (const el of [$('dealerHand'), $('msg'), $('res-ante'), $('res-pp'), $('res-scb')]) animLater(el, revealed);
-  animHold(tcpChipSettle(raised, ppRet, scbRet, returned - ppRet - scbRet, revealed));
+  animHold(tcpChipSettle(bets, raised, res.ppRet, res.scbRet, res.anteRet, revealed));
   bankRelease();
   renderStats();
   renderLog();
-  save();
+  if (on) onSave();
 
   tcpButtons(false);
   phase = 'betting';
@@ -1618,16 +1481,48 @@ function tcpButtons(decision) {
   $('btnPlay').hidden = !decision;
   $('btnFold').hidden = !decision;
   $('btnDeal').disabled = decision;
-  $('btnPlay').disabled = !decision || S.chips < S.bets.ante;
+  $('btnPlay').disabled = !decision || bankroll() < TCPS().bets.ante;
   $('btnFold').disabled = !decision;
 }
 
+/**
+ * Display only: draw a settled hand's result (per-bet results, dealer tag and
+ * the message). Reads a TCP.settle() result; online, the server's.
+ */
+function tcpShowResult(res, bets) {
+  $('dealerHand').innerHTML = res.dName +
+    `<span class="tag ${res.qualified ? 'q' : 'nq'}">${res.qualified ? 'qualifies' : 'does not qualify'}</span>`;
+  const lines = [];
+  if (bets.pp > 0) {
+    if (res.ppPay) { setResult('pp', `+${res.ppWin}`, 'win'); lines.push(`PP ${res.ppPay}:1 +${res.ppWin}`); }
+    else setResult('pp', `-${bets.pp}`, 'lost');
+  }
+  if (bets.scb > 0) {
+    if (res.scbPay) { setResult('scb', `+${res.scbWin}`, 'win'); lines.push(`6CB ${CAT5_NAME[res.scbCat]} +${res.scbWin}`); }
+    else setResult('scb', `-${bets.scb}`, 'lost');
+  }
+  if (bets.ante > 0) {
+    const a = bets.ante;
+    if (res.bonus) lines.push(`Ante bonus ${res.bonusPay}:1 +${res.bonus}`);
+    if (res.outcome === 'fold') setResult('ante', `-${a}`, 'lost');
+    else if (res.outcome === 'no-qualify') { setResult('ante', `+${a}`, 'win'); lines.push(`Dealer no qualify: ante +${a}, play pushes`); }
+    else if (res.outcome === 'win') { setResult('ante', `+${a * 2}`, 'win'); lines.push(`Beat dealer +${a * 2}`); }
+    else if (res.outcome === 'push') { setResult('ante', '0', 'pushc'); lines.push('Tie, both push'); }
+    else { setResult('ante', `-${a * 2}`, 'lost'); lines.push(`Lost to dealer -${a * 2}`); }
+  }
+  const net = res.net;
+  $('msg').innerHTML = (lines.length ? lines.join(' &nbsp;|&nbsp; ') : 'No action.') +
+    `<br><strong class="${net > 0 ? 'win' : net < 0 ? 'lost' : 'pushc'}">` +
+    `Net ${net >= 0 ? '+' : ''}${net}</strong>`;
+  $('hint').textContent = '';
+}
+
 /** Display only: after the dealer's cards are up, move chips for each bet. */
-function tcpChipSettle(raised, ppRet, scbRet, anteRet, at) {
+function tcpChipSettle(bets, raised, ppRet, scbRet, anteRet, at) {
   return chipSettle([
-    { spot: $('bet-ante'), bet: S.bets.ante * (raised ? 2 : 1), ret: anteRet },
-    { spot: $('bet-pp'), bet: S.bets.pp, ret: ppRet },
-    { spot: $('bet-scb'), bet: S.bets.scb, ret: scbRet },
+    { spot: $('bet-ante'), bet: bets.ante * (raised ? 2 : 1), ret: anteRet },
+    { spot: $('bet-pp'), bet: bets.pp, ret: ppRet },
+    { spot: $('bet-scb'), bet: bets.scb, ret: scbRet },
   ], $('dealerCards'), $('tcpRail'), at);
 }
 
@@ -1636,7 +1531,7 @@ function tcpChipSettle(raised, ppRet, scbRet, anteRet, at) {
    =========================================================================== */
 
 function renderStats() {
-  const st = S.stats;
+  const st = TCPS().stats;
   const rows = [];
   const pct = x => (x * 100).toFixed(2) + '%';
 
@@ -1668,7 +1563,7 @@ function renderStats() {
 }
 
 function renderLog() {
-  const recent = S.history.slice(-40).reverse();
+  const recent = TCPS().history.slice(-40).reverse();
   $('log').innerHTML = recent.map(h =>
     `<div>#${h.n} ${h.pHand} vs ${h.dHand} ` +
     `<span class="${h.net>0?'win':h.net<0?'lost':'pushc'}">${h.net>=0?'+':''}${h.net}</span></div>`
@@ -1695,7 +1590,8 @@ function renderPaytables() {
     const p = RULES.sixCard[k];
     if (p) s.push(`<tr class="stat-row"><td>${CAT5_NAME[i]}</td><td>${p}:1</td></tr>`);
   }
-  s.push('<tr><td colspan="2" style="padding-top:8px;color:#667;font-size:11px">Exact house edges: ante 3.3730%, Pair Plus 7.2760%, 6CB 8.5614%</td></tr>');
+  const he = TABLE_RULES.tcpHouseEdge, p4 = x => (100 * x).toFixed(4) + '%';   // checked by enumerate.js
+  s.push(`<tr><td colspan="2" style="padding-top:8px;color:#667;font-size:11px">Exact house edges: ante ${p4(he.ante)}, Pair Plus ${p4(he.pairPlus)}, 6CB ${p4(he.sixCard)}</td></tr>`);
   $('scbTable').innerHTML = s.join('');
 }
 
@@ -1720,6 +1616,8 @@ const T = () => BJ_TABLES[bjTable];   // current table definition
 const TS = () => (online() ? ON.ts[bjTable] : S[bjTable]);
 // Chips the blackjack tables play with: S.chips offline, the server wallet online.
 const bankroll = () => (online() ? ON.wallet.chips : S.chips);
+/** Three Card Poker bets, stats and history for the current mode (display; online, the server holds the hand). */
+const TCPS = () => (online() ? ON.tcp : S);
 const BJ_OUTCOME = { blackjack: 'Blackjack', win: 'Win', push: 'Push', lose: 'Lose', bust: 'Bust' };
 const BJ_SIDE_KEYS = Object.keys(BJ.SIDE_BETS);
 const BJ_SIDE_NAME = { perfectPairs: 'Perfect Pairs', twentyOnePlus3: '21+3' };
@@ -2176,11 +2074,8 @@ function showGame(g) {
   S.game = BJ_TABLES[g] || g === 'rewards' || g === 'home' ? g : 'tcp';
   const isBj = !!BJ_TABLES[S.game];
   $('game-bj').hidden = !isBj;
-  // Online play covers the blackjack tables so far; the rest uses browser chips.
-  const offOnly = online() && S.game === 'tcp';
-  $('game-tcp').hidden = S.game !== 'tcp' || offOnly;
+  $('game-tcp').hidden = S.game !== 'tcp';
   $('game-rewards').hidden = S.game !== 'rewards';
-  $('game-offonly').hidden = !offOnly;
   $('game-home').hidden = S.game !== 'home';
   if (S.game === 'rewards') econRenderRewards();
   if (S.game === 'home') renderHome();
@@ -2285,7 +2180,7 @@ function econLevelUpNote(e) {
 /* ---------- home ---------- */
 
 const HOME_GAMES = [
-  { id: 'tcp', name: 'Three Card Poker', edge: () => 'House edge 3.37% of the ante (exact)',
+  { id: 'tcp', name: 'Three Card Poker', edge: () => `House edge ${(100 * TABLE_RULES.tcpHouseEdge.ante).toFixed(2)}% of the ante (exact)`,
     ds: 'Beat the dealer\'s three cards. Pair Plus and 6 Card Bonus on the side.',
     net: () => S.stats.net, n: () => S.stats.hands, unit: 'hands' },
   { id: 'bj', name: 'Blackjack', edge: () => `House edge ${(100 * RULES.bjHouseEdge).toFixed(2)}% with basic strategy`,
@@ -2564,7 +2459,7 @@ async function acctBoot() {
 }
 
 /* ===========================================================================
-   ONLINE PLAY (Stage 2): Blackjack and Free Bet against the `play` Edge Function
+   ONLINE PLAY (Stage 2): every table against the `play` Edge Function
    ---------------------------------------------------------------------------
    Signed in, the blackjack tables deal on the server (supabase/functions/play,
    the same blackjack-core.js) and chips live in a server wallet that only the
@@ -2577,7 +2472,9 @@ async function acctBoot() {
    and the hole card as null (always drawn face down). Stats, history and the
    bet sizes are display-only and kept in localStorage under ONLINE_KEY.
 
-   Not online yet (offline only): Three Card Poker, wheels, quests, vault, shop.
+   Three Card Poker works the same way (tcp-core.js on the server): the page
+   gets the player's three cards, and the dealer's only once the hand is over.
+   The economy (quests, wheels, vault, shop) is online too, through onEcon().
    The Online/Offline button by the chips switches modes.
    =========================================================================== */
 
@@ -2594,7 +2491,8 @@ function onSave() {
   if (!ON) return;
   const keep = ts => ({ bet: ts.bet, side: ts.side, stats: ts.stats, history: ts.history.slice(-200) });
   try {
-    localStorage.setItem(ONLINE_KEY, JSON.stringify({ user: ON.user, on: ON.on, bj: keep(ON.ts.bj), fb: keep(ON.ts.fb) }));
+    const tcp = { bets: ON.tcp.bets, stats: ON.tcp.stats, history: ON.tcp.history.slice(-200) };
+    localStorage.setItem(ONLINE_KEY, JSON.stringify({ user: ON.user, on: ON.on, bj: keep(ON.ts.bj), fb: keep(ON.ts.fb), tcp }));
   } catch (e) { /* storage blocked: display stats just won't survive a reload */ }
 }
 
@@ -2638,11 +2536,17 @@ async function onBoot() {
     b.seq = 0;
     ON.ts[t] = b;
   }
+  const tb = blankState();
+  ON.tcp = { seq: 0, round: null, last: null,
+             bets: (mine.tcp && mine.tcp.bets) || tb.bets,
+             stats: (mine.tcp && mine.tcp.stats) || tb.stats,
+             history: (mine.tcp && mine.tcp.history) || [] };
   try {
     const d = await onCall({ op: 'state' });
     if (!d.ok) throw new Error(d.message);
     ON.wallet = d.wallet;
     for (const t of ONLINE_GAMES) onApply(t, d.tables[t]);
+    if (d.tables.tcp) onTcpApply(d.tables.tcp);
     econAnnounce(d.events || []);   // e.g. yesterday's unclaimed quests, vault interest
   } catch (e) {
     toast('info', 'Online play unavailable', 'Couldn\'t reach the table server, so the tables are using this browser\'s chips. Reload to try again.');
@@ -2664,7 +2568,7 @@ function onToggle() {
   onSave();
   onRefreshUI();
   toast('info', ON.on ? 'Playing online' : 'Playing offline',
-    ON.on ? 'Blackjack, Free Bet and Rewards use your server chips.' : 'Every table uses this browser\'s chips. Your online chips are safe on the server.');
+    ON.on ? 'Every table and Rewards use your server chips.' : 'Every table uses this browser\'s chips. Your online chips are safe on the server.');
 }
 
 function renderMode() {
@@ -2675,7 +2579,7 @@ function renderMode() {
   b.classList.toggle('on', online());
   b.textContent = online() ? '● Online' : '○ Offline';
   b.title = online()
-    ? 'Blackjack, Free Bet and Rewards run on the server, with server chips. Click to play offline with this browser\'s chips.'
+    ? 'Every table and Rewards run on the server, with server chips. Click to play offline with this browser\'s chips.'
     : 'Playing with this browser\'s chips. Click to play online.';
   $('bankLbl').textContent = online() ? 'online chips' : 'chips';
 }
@@ -2685,13 +2589,15 @@ function onRefreshUI() {
   for (const t of ONLINE_GAMES) delete bjShown[t];   // don't animate from the other mode's cards
   railShown = null;
   if (BJ_TABLES[S.game]) $('bjMsg').textContent = online() ? 'Playing online: your chips and the cards are on the server.' : '';
+  if (!animBusy()) tcpRestore(online() ? 'Playing online: your chips and the cards are on the server.' : (S.tcpRound ? 'Your offline hand, as you left it.' : ''));
   renderBank(); econRenderHeader(); renderMode(); applyCosmetics(); renderNotes();
   showGame(S.game);
 }
 
 /** Chips in play at the online tables (they count against "broke"). */
 function onInPlay() {
-  return ONLINE_GAMES.reduce((n, t) => n + (ON.ts[t].round ? ON.ts[t].round.wagered : 0), 0);
+  return ONLINE_GAMES.reduce((n, t) => n + (ON.ts[t].round ? ON.ts[t].round.wagered : 0), 0) +
+    (ON.tcp.round ? ON.tcp.round.wagered : 0);
 }
 
 /**
@@ -2803,6 +2709,70 @@ async function onSend(body, onOk) {
   ON.events = d.events || [];   // what the economy did; bjSettle announces it with the result
   if (ts.round) { econAnnounce(ON.events.splice(0)); bjAfter(prefix); onSave(); }
   else if (ts.last) bjSettle(ts.last, prefix);   // records display stats, draws the result
+}
+
+/* ---------- Three Card Poker online ---------- */
+
+/** Copy the server's TCP view into ON.tcp (dealer cards are null until the hand is over). */
+function onTcpApply(view) {
+  ON.tcp.seq = view.seq;
+  ON.tcp.round = view.round;
+  ON.tcp.last = view.last;
+}
+
+async function onTcpDeal() {
+  const T = ON.tcp, b = T.bets;
+  if (ON.busy || T.round || phase !== 'betting') return;
+  const stake = b.ante + b.pp + b.scb;
+  // The server checks all of this again; these are just quicker messages.
+  if (stake === 0) { $('msg').textContent = 'Place at least one bet.'; return; }
+  if (Math.max(b.ante, b.pp, b.scb) > econMaxBet()) {
+    $('msg').textContent = `Your table limit is ${econMaxBet().toLocaleString()} per bet. Rank up to raise it.`; return;
+  }
+  if (bankroll() < stake) { $('msg').innerHTML = 'Not enough chips.' + onBrokeHint(); return; }
+  await onTcpSend({ op: 'deal', table: 'tcp', seq: T.seq, bets: { ante: b.ante, pp: b.pp, scb: b.scb } });
+}
+
+async function onTcpAct(action) {
+  if (ON.busy || !ON.tcp.round || phase !== 'decision') return;
+  if (action === 'play' && bankroll() < ON.tcp.round.bets.ante) return;
+  await onTcpSend({ op: 'act', table: 'tcp', seq: ON.tcp.seq, action });
+}
+
+/** Send one TCP deal/act, then draw what the server dealt and settled, as an offline hand is drawn. */
+async function onTcpSend(body) {
+  ON.busy = true;
+  let d = null;
+  try { d = await onCall(body); }
+  catch (e) {
+    // The request may or may not have reached the server: ask what's true now.
+    try { const s2 = await onCall({ op: 'state' }); if (s2.ok) { ON.wallet = s2.wallet; onTcpApply(s2.tables.tcp); } } catch (e2) { /* still offline */ }
+    d = { ok: false, message: 'Connection problem. The table shows what the server has; try again.' };
+  }
+  if (!ON) return;            // signed out meanwhile
+  ON.busy = false;
+  if (d.error === 'signed_out') { $('msg').textContent = d.message; onStop(); return; }
+  if (d.wallet) ON.wallet = d.wallet;
+  if (d.view) onTcpApply(d.view);   // refusals carry the current view too
+  econRenderHeader();
+  if (S.game !== 'tcp' || !online()) { onSave(); renderBank(); return; }   // switched tab/mode mid-request
+  if (!d.ok) { tcpRestore(d.message || 'The server refused that.'); return; }
+  const T = ON.tcp, events = d.events || [];
+  if (body.op === 'deal') {
+    const h = T.round || T.last;
+    player = h.player;
+    dealer = T.round ? h.dealer : h.dealer.map(() => null);   // drawn face down either way
+    const dealt = tcpDrawDeal(h.bets);
+    if (T.round) { econAnnounce(events); tcpDecision(h.bets, dealt); onSave(); return; }
+  } else if (body.action === 'play') {
+    chipFly($('tcpRail'), $('bet-ante'), T.last.bets.ante, 0);   // the play bet goes out first
+    animHold(CHIP.fly);
+  }
+  // Settled (side bets only, or after play / fold): the server already paid
+  // the result into the wallet; announce what the economy did with it.
+  player = T.last.player;
+  dealer = T.last.dealer;
+  tcpSettled(T.last.result, T.last.bets, T.last.raised, econAnnounce(events));
 }
 
 /* ---------- quest claiming ---------- */
@@ -3463,25 +3433,30 @@ $('btnReset').onclick = () => {
 
 document.querySelectorAll('[data-bet]').forEach(b => {
   b.onclick = () => {
-    if (phase !== 'betting' || animBusy()) return;
+    if (phase !== 'betting' || animBusy() || (online() && ON.busy)) return;
     const k = b.dataset.bet, dir = Math.sign(parseInt(b.dataset.d, 10));
-    S.bets[k] = ECON.stepBet(S.bets[k], dir, { min: RULES.minBet, max: econMaxBet(), multipleOf: 5, allowZero: true });
-    renderBets(); save();
+    const bets = TCPS().bets;
+    bets[k] = ECON.stepBet(bets[k], dir, { min: RULES.minBet, max: econMaxBet(), multipleOf: TABLE_RULES.tcp.betStep, allowZero: true });
+    renderBets(); save(); if (online()) onSave();
   };
 });
 
 // Input is ignored while cards are still animating (animBusy). That gate lives
 // here in the handlers, never in deal()/resolve(), so game logic can't depend on it.
-$('btnDeal').onclick = () => { if (!animBusy()) deal(); };
+$('btnDeal').onclick = () => { if (animBusy()) return; if (online()) onTcpDeal(); else deal(); };
 $('btnPlay').onclick = () => {
   if (phase !== 'decision' || animBusy()) return;
+  if (online()) { onTcpAct('play'); return; }
   S.chips -= S.bets.ante;
   renderBank();
   chipFly($('tcpRail'), $('bet-ante'), S.bets.ante, 0);   // the play bet goes out first
   animHold(CHIP.fly);
   resolve(true);
 };
-$('btnFold').onclick = () => { if (phase === 'decision' && !animBusy()) resolve(false); };
+$('btnFold').onclick = () => {
+  if (phase !== 'decision' || animBusy()) return;
+  if (online()) onTcpAct('fold'); else resolve(false);
+};
 
 /* ---------- blackjack wiring ---------- */
 document.querySelectorAll('.tabs button').forEach(b => { b.onclick = () => showGame(b.dataset.game); });
@@ -3509,7 +3484,6 @@ $('bjInsure').onclick = () => { if (!animBusy()) bjAct('insure'); };
 $('bjNoInsure').onclick = () => { if (!animBusy()) bjAct('decline'); };
 $('peek').addEventListener('change', () => bjRender());
 $('modeBtn').onclick = () => onToggle();
-$('offonlyBtn').onclick = () => onToggle();
 
 document.addEventListener('keydown', e => {
   if (!BJ_TABLES[S.game] || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -3600,16 +3574,7 @@ if (TS().round) $('bjMsg').textContent = 'Round in progress, restored from your 
 
 // A Three Card Poker hand that was waiting on play/fold when the page closed.
 if (S.tcpRound) {
-  player = S.tcpRound.player;
-  dealer = S.tcpRound.dealer;
-  pEval = eval3(...player);
-  dEval = eval3(...dealer);
-  phase = 'decision';
-  renderCards($('playerCards'), player, false);
-  renderCards($('dealerCards'), dealer, true);
-  $('playerHand').textContent = pEval.name;
-  tcpButtons(true);
-  $('msg').textContent = 'Hand restored from your last visit. Play or fold?';
+  tcpRestore('Hand restored from your last visit.');
 } else if (Date.now() >= econBonusReadyAt()) {
   $('msg').innerHTML = 'Your <a href="#" onclick="showGame(\'rewards\');return false">Bonus Wheel</a> is ready to spin. Place your bets.';
 }

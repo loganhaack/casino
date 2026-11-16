@@ -17,13 +17,13 @@ against them. That property is the point of the project, not a nice-to-have.
 ## Commands
 
 ```bash
-node enumerate.js              # exact probability tables, ~4s, writes expected.json
+node enumerate.js              # exact TCP tables from tcp-core.js + tables.js, ~5s; fails if the displayed edges disagree
 node test-payouts.js 200000    # drives the real game code, verifies chip math, ~6min
 node test-blackjack.js         # blackjack totals + engine scenarios + fuzz, ~6s
 node enumerate-blackjack.js    # exact dealer tables vs Wizard of Odds, <1s, writes expected-blackjack.json
 node test-blackjack-payouts.js # real page code: chip accounting, house edge, dealer chi-square, ~3min
 node test-economy.js           # wheels, quests, events, ledger, "deal is indifferent to who you are", ~30s
-node sync-shared.js            # copy blackjack-core/tables/economy into supabase/functions/_shared/
+node sync-shared.js            # copy blackjack-core/tcp-core/tables/economy into supabase/functions/_shared/
 node sync-shared.js --check    # fails if the server's copies drift from the root files
 node test-server.js            # online table server vs in-memory commit_turn: ledger, no leaks, same game, ~30s
 node test-online-page.js       # real page code playing online against the real server logic, ~10s
@@ -36,15 +36,14 @@ enough that there is no excuse to skip them.
 
 ## Critical invariant
 
-`eval3()` is duplicated verbatim in `index.html` and `enumerate.js`.
-
-**If you change one, change the other.** If they drift, the enumerator is
-validating a different game than the one being played and the whole
-verification story is theater.
-
-Pulling this into a shared module is on the roadmap and is the right fix. Until
-there's a build step, the duplication is deliberate so `index.html` stays
-openable as a bare file.
+The enumerators must validate the exact code that deals the game. Each game's
+logic lives in ONE classic-script file that the page (`<script src>`), the
+enumerator, the harnesses and the server all load: `tcp-core.js` (`eval3()`,
+`categorize6()`, deal, `settle()`) and `blackjack-core.js`. Paytables live in
+`tables.js`. **Never copy any of it into `index.html` or `enumerate.js`.** A
+copy that drifts means the enumerator is validating a different game than the
+one being played, and the whole verification story is theater. (`eval3()`
+used to be duplicated in both files and kept in sync by hand; it no longer is.)
 
 ## Hard rules
 
@@ -205,7 +204,7 @@ weekly event calendar, daily quests, and the cosmetics shop.
   then explicit column grants and policies. Verify from outside with the
   publishable key that anonymous reads/writes get `42501`.
 - Edge Functions load `supabase/functions/_shared/` copies of
-  `blackjack-core.js`, `tables.js` and `economy.js`. Those are byte-identical
+  `blackjack-core.js`, `tcp-core.js`, `tables.js` and `economy.js`. Those are byte-identical
   copies made by `sync-shared.js`; never edit them. Edit the root file, re-sync,
   and run `--check` before any deploy (the eval3() drift rule, server edition).
 - **Online server** is the `play` Edge Function. `logic.js` is all of its
@@ -222,26 +221,25 @@ weekly event calendar, daily quests, and the cosmetics shop.
   Online, the page never moves a chip or runs an economy action itself:
   game clicks go through `onSend`, economy clicks (claim, spin, vault, buy,
   equip) through `onEcon`; the server runs the action and returns the new
-  wallet plus events, which the page announces. `bjSettle()` only records
-  display stats online. Don't write `S.chips` / `S.econ` in an online path.
-  An Online/Offline button under the chips switches; Three Card Poker shows
-  an "offline only" panel while online. Display stats/bets persist under
-  `casino.online.v1`.
-- Online: Blackjack, Free Bet, XP (incl. Double XP), quests + claiming, event
-  promos, both wheels, vault + interest, shop + equip. Every server request
-  first catches the day up (`ensureQuests`, `accrueVault`). Not online yet:
-  Three Card Poker (`eval3()` lives in `index.html`/`enumerate.js`; it has to
-  move to a shared file first).
-- Step 1 (done): profiles only (name, avatar). Chips still live in the browser.
-  Step 2: balances + ledger + dealing move into Edge Functions together. A
-  balance column the browser can write is a balance anyone can edit.
+  wallet plus events, which the page announces. `bjSettle()` and
+  `tcpSettled()` only record display stats online. Don't write `S.chips` /
+  `S.econ` in an online path. Three Card Poker clicks go through
+  `onTcpSend`; `TCPS()` is its bets/stats/history for the current mode, and
+  the dealer's three cards are null in the page until the hand is over. An
+  Online/Offline button under the chips switches. Display stats/bets persist
+  under `casino.online.v1`.
+- Online: every game (Blackjack, Free Bet, Three Card Poker), XP (incl.
+  Double XP), quests + claiming, event promos, both wheels, vault + interest,
+  shop + equip. Every server request first catches the day up
+  (`ensureQuests`, `accrueVault`).
+- Balances, the ledger and dealing moved server-side together: a balance
+  column the browser can write is a balance anyone can edit.
 
 ## Next up
 
-Going live: see HOSTING.md. Stage 1 is static hosting as-is. Stage 2 is
-Supabase (auth, shared balances, leaderboard), and it requires moving
-shuffle/deal/settle server-side (Edge Function running blackjack-core.js and
-economy.js unchanged) before any leaderboard means anything. Then slots.
+The leaderboard (HOSTING.md, Stage 2 step 4): every game now deals and
+settles on the server, which is what makes a leaderboard mean anything. Then
+slots.
 
 Edge checks in both payout harnesses fail only beyond 4 standard errors
 (about 1 run in 16,000 for a correct game). If one fails, re-run once; if it

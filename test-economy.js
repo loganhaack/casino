@@ -277,7 +277,7 @@ for (const which of ['bonus', 'rescue']) {
 
 const HTML = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 const SCRIPT = HTML.match(/<script>([\s\S]*?)<\/script>/)[1];
-for (const f of ['blackjack-core.js', 'economy.js']) {
+for (const f of ['blackjack-core.js', 'tables.js', 'tcp-core.js', 'economy.js']) {
   ok(`index.html loads ${f}`, HTML.includes(`<script src="${f}"></script>`));
 }
 
@@ -314,7 +314,7 @@ function loadPage({ store, clock, crypto }) {
       getElementById: id => { if (!els.has(id)) els.set(id, makeEl(id)); return els.get(id); },
       querySelectorAll: () => [], createElement: () => makeEl('tmp'), addEventListener: () => {},
     },
-    BJ, ECON, TABLE_RULES: require('./tables.js'),
+    BJ, ECON, TABLE_RULES: require('./tables.js'), TCP: require('./tcp-core.js'),
   };
   sb.globalThis = sb;
   vm.createContext(sb);

@@ -18,7 +18,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const FILES = ['blackjack-core.js', 'tables.js', 'economy.js'];
+const FILES = ['blackjack-core.js', 'tcp-core.js', 'tables.js', 'economy.js'];
 const ROOT = __dirname;
 const DEST = path.join(ROOT, 'supabase', 'functions', '_shared');
 

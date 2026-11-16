@@ -19,6 +19,9 @@
  *     switching back finds the server state intact
  *   - a reload in the middle of an online round resumes it from the server
  *   - a dropped connection resyncs from the server; nothing is lost or doubled
+ *   - Three Card Poker online: the page never holds the dealer's cards
+ *     before the hand ends; page and server agree every hand; a reload
+ *     mid-hand resumes it; offline poker still uses browser chips
  *   - signing out returns to offline play
  */
 'use strict';
@@ -26,6 +29,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const BJ = require('./blackjack-core.js');
+const TCP = require('./tcp-core.js');
 const PLAY = require('./supabase/functions/play/logic.js');
 const { memStore, mulberry32 } = require('./test-server.js');
 
@@ -87,7 +91,7 @@ function loadPage(net, storage) {
       querySelectorAll: () => [], querySelector: () => null, createElement: () => makeEl('tmp'),
       addEventListener: () => {}, body: makeEl('body'),
     },
-    BJ, ECON: require('./economy.js'), TABLE_RULES: require('./tables.js'),
+    BJ, ECON: require('./economy.js'), TABLE_RULES: require('./tables.js'), TCP: require('./tcp-core.js'),
   };
   sandbox.globalThis = sandbox;
   sandbox.window = sandbox;
@@ -95,6 +99,7 @@ function loadPage(net, storage) {
   vm.runInContext(script + `
 ;globalThis.__h = { getS: () => S, getON: () => ON, online, TS, bankroll, showGame, bjDeal, bjAct, onToggle, onRescue,
   acctSignOut, econClaimQuest, econClaimAll, econVault, econBuy, econEquip, econSpinClick, econUnclaimed, E,
+  TCPS, onTcpDeal, onTcpAct, deal, resolve, getPhase: () => phase,
   get bjTable() { return bjTable; } };`, sandbox, { filename: 'index.html:script' });
   return { H: sandbox.__h, el: id => sandbox.document.getElementById(id) };
 }
@@ -206,6 +211,84 @@ setTimeout(() => { console.log('\nFAIL: timed out (a round never finished?)'); p
     report('Offline plays on browser chips, server untouched; switching back is seamless', f);
   }
 
+  console.log('\nthree card poker online');
+  {
+    const f = fail, rnd = mulberry32(7), N = Math.max(300, ROUNDS >> 2);
+    const S0 = P.H.getS().chips, L0 = JSON.stringify(P.H.getS().econ.ledger), tcpRound0 = P.H.getS().tcpRound;
+    P.H.showGame('tcp');
+    ok(!P.el('game-tcp').hidden, 'Poker table shows online (no offline-only panel)');
+    const T = P.H.TCPS();
+    ok(T === P.H.getON().tcp, 'Poker uses the online state');
+    let decisions = 0, sideOnly = 0;
+    for (let i = 0; i < N; i++) {
+      const w = net.store.wallets.get(USER);
+      if (w.chips < 300) {
+        await net.store.commit(USER, w.version, { chips: w.chips + 2000, vault: 0, econ: w.econ,
+          ledger: [{ account: 'chips', amount: 2000, kind: 'quests' }] });
+      }
+      const pick = () => (rnd() < 0.3 ? 0 : 5 * (1 + Math.floor(rnd() * 8)));
+      T.bets = { ante: pick(), pp: pick(), scb: pick() };
+      if (!T.bets.ante && !T.bets.pp && !T.bets.scb) T.bets.pp = 5;
+      const before = net.store.wallets.get(USER).chips, rows0 = net.store.ledger.length;
+      // A grant made behind the page's back shows up on the deal's reply.
+      await P.H.onTcpDeal();
+      const ON = P.H.getON();
+      if (ON.tcp.round) {
+        decisions++;
+        ok(ON.tcp.round.dealer.length === 3 && ON.tcp.round.dealer.every(c => c === null), 'dealer cards in the page mid-hand');
+        ok(P.H.getPhase() === 'decision', 'page waits for play/fold');
+        const play = TCP.eval3(...ON.tcp.round.player).value >= TCP.Q64 && P.H.bankroll() >= ON.tcp.round.bets.ante;
+        await P.H.onTcpAct(play ? 'play' : 'fold');
+      } else sideOnly++;
+      const last = ON.tcp.last, after = net.store.wallets.get(USER).chips;
+      ok(last && last.dealer.every(c => c !== null) && !ON.tcp.round, 'finished hand shown in full');
+      const extra = net.store.ledger.slice(rows0).filter(x => x.account === 'chips' && x.kind !== 'bet' && x.kind !== 'payout').reduce((a, x) => a + x.amount, 0);
+      ok(after - before === last.result.net + extra, `server moved ${after - before}, page shows net ${last.result.net} + grants ${extra}`);
+      ok(P.H.bankroll() === after, 'page bankroll == server');
+      ok(after === net.store.ledgerSum(USER), 'server chips == ledger');
+      ok(P.H.getS().chips === S0, 'browser chips untouched');
+      ok(P.H.getPhase() === 'betting', 'ready for the next hand');
+    }
+    ok(T.stats.hands === N, `page stats counted ${T.stats.hands} of ${N} hands`);
+    ok(decisions > 0 && sideOnly > 0, 'reached play/fold hands and side-bets-only hands');
+    ok(JSON.stringify(P.H.getS().econ.ledger) === L0 && P.H.getS().tcpRound === tcpRound0, 'browser ledger and offline hand untouched');
+    const leak = net.responses.some(res => {
+      const vs = res.tables ? [res.tables.tcp] : res.table === 'tcp' && res.view ? [res.view] : [];
+      return vs.some(v => v && v.round && v.round.dealer.some(c => c !== null));
+    });
+    ok(!leak, 'no server response carried a dealer card before the hand ended');
+
+    // Reload in the middle of a hand: the server still has it.
+    T.bets = { ante: 10, pp: 0, scb: 0 };
+    await P.H.onTcpDeal();
+    const mid = P.H.getON().tcp.round;
+    ok(mid && P.H.getPhase() === 'decision', 'hand waiting on play/fold');
+    const P2 = loadPage(net, storage);
+    await tick();
+    P2.H.showGame('tcp');
+    const r2 = P2.H.getON().tcp.round;
+    ok(r2 && JSON.stringify(r2.player) === JSON.stringify(mid.player) && r2.dealer.every(c => c === null), 'reloaded page resumes the same hand, dealer still hidden');
+    ok(P2.H.getPhase() === 'decision', 'reloaded page offers play/fold');
+    await P2.H.onTcpAct('fold');
+    ok(!P2.H.getON().tcp.round && net.store.wallets.get(USER).chips === net.store.ledgerSum(USER), 'fold after reload settles; ledger identity');
+    P = P2;
+
+    // Offline poker still plays on browser chips and leaves the server alone.
+    const serverBefore = JSON.stringify(net.store.wallets.get(USER)), calls = net.calls;
+    P.H.onToggle();
+    ok(!P.H.online() && P.H.TCPS() === P.H.getS(), 'offline: poker uses the browser save');
+    const c0 = P.H.getS().chips;
+    P.H.getS().bets = { ante: 10, pp: 5, scb: 0 };
+    P.H.deal();
+    if (P.H.getPhase() === 'decision') P.H.resolve(false);
+    const h = P.H.getS().history[P.H.getS().history.length - 1];
+    ok(P.H.getS().chips === c0 + h.net, 'offline hand moved browser chips by its net');
+    ok(net.calls === calls && JSON.stringify(net.store.wallets.get(USER)) === serverBefore, 'offline hand did not touch the server');
+    P.H.onToggle();
+    ok(P.H.online() && P.H.bankroll() === net.store.wallets.get(USER).chips, 'back online: server chips intact');
+    report(`${N} online hands: page and server agree every hand, dealer never in the page early; reload resumes; offline poker unaffected`, f);
+  }
+
   console.log('\nreload mid-round');
   {
     const f = fail;
@@ -270,6 +353,7 @@ setTimeout(() => { console.log('\nFAIL: timed out (a round never finished?)'); p
       ledger: [{ account: 'chips', amount: 30 - w0.chips, kind: 'shop' }] });
     const S0 = P.H.getS().chips;
     P.H.TS().bet = 10;
+    P.H.TS().side = { perfectPairs: 0, twentyOnePlus3: 0 };   // 10 a round, so it can get under 10
     let guard = 0;
     while (net.store.wallets.get(USER).chips >= 10 && guard++ < 500) {
       await P.H.bjDeal();
@@ -297,10 +381,7 @@ setTimeout(() => { console.log('\nFAIL: timed out (a round never finished?)'); p
     const lastRow = () => net.store.ledger[net.store.ledger.length - 1];
     const synced = () => P.H.bankroll() === net.store.wallets.get(USER).chips && P.H.E().vault.balance === net.store.wallets.get(USER).vault;
     P.H.showGame('rewards');
-    ok(!P.el('game-rewards').hidden && P.el('game-offonly').hidden, 'Rewards tab is available online');
-    P.H.showGame('tcp');
-    ok(P.el('game-offonly').hidden === false, 'Poker still shows the offline-only panel');
-    P.H.showGame('rewards');
+    ok(!P.el('game-rewards').hidden, 'Rewards tab is available online');
     ok(JSON.stringify(P.H.E()) === JSON.stringify(net.store.wallets.get(USER).econ) || P.H.E().quests.day === net.store.wallets.get(USER).econ.quests.day,
       'page shows the server\'s economy state');
 
@@ -341,7 +422,9 @@ setTimeout(() => { console.log('\nFAIL: timed out (a round never finished?)'); p
     // Quests: finish one on the server and claim it through the page.
     w = net.store.wallets.get(USER);
     const e = JSON.parse(JSON.stringify(w.econ));
-    const qi = e.quests.list.findIndex(q => !q.done);
+    // Earlier sections may have finished every quest today; reuse one if so.
+    let qi = e.quests.list.findIndex(q => !q.done);
+    if (qi < 0) qi = 0;
     if (qi >= 0) {
       Object.assign(e.quests.list[qi], { done: true, progress: e.quests.list[qi].target, claimed: false, reward: { chips: 77, xp: 7 } });
       await net.store.commit(USER, w.version, { chips: w.chips, vault: w.vault, econ: e, ledger: [] });

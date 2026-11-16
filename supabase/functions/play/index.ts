@@ -16,6 +16,7 @@
 // which works with the new asymmetric sign-in keys.
 
 import '../_shared/blackjack-core.js';
+import '../_shared/tcp-core.js';
 import '../_shared/tables.js';
 import '../_shared/economy.js';
 import './logic.js';

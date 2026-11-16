@@ -68,6 +68,7 @@ const sandbox = {
 sandbox.BJ = require('./blackjack-core.js');
 sandbox.ECON = require('./economy.js');
 sandbox.TABLE_RULES = require('./tables.js');
+sandbox.TCP = require('./tcp-core.js');
 sandbox.globalThis = sandbox;
 
 // ---------------------------------------------------------------------------

@@ -191,7 +191,8 @@ through saving (the vault), not handouts. Never through odds.
       out at the deal and back (or to the dealer) at settlement. All display
       only: drawn from numbers the game already settled.
 - [x] Home tab, notifications (bell + toasts), quests claimed by hand
-- [ ] Supabase: auth, shared chip balance, leaderboard
+- [x] Supabase: auth, server wallets + ledger, every game dealt on the server
+- [ ] Leaderboard
 - [ ] Profiles (with Supabase): display name, avatar, equipped cosmetics
       visible to friends. Gives the shop more to sell for chips (avatars,
       frames). Cosmetic only, never anything that affects play.
@@ -199,9 +200,11 @@ through saving (the vault), not handouts. Never through odds.
 
 ## Extending it
 
-Everything tunable is in `RULES` at the top of the `<script>` block. Change a
-paytable, mirror the change in `enumerate.js`, re-run both scripts, and you'll
-see the new house edge before you ever deal a hand.
+Every paytable and table rule is in `tables.js`. Change one, re-run the
+game's scripts, and you'll see the new house edge before you ever deal a hand.
 
-`eval3()` is byte-for-byte the same logic in `index.html` and `enumerate.js`.
-If you change one, change the other, or the verification means nothing.
+Three Card Poker's logic (`eval3()`, the six-card bonus evaluator, the deal
+and settlement) lives only in `tcp-core.js`, and the page, `enumerate.js`,
+the harness and the online server all load that one file. So the enumerator
+verifies the code that actually deals, not a copy of it. Never copy it back
+into `index.html`.

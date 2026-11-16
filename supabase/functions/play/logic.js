@@ -2,10 +2,11 @@
  * Online table server: the game and economy logic, with no database and no
  * Deno in it.
  *
- * It runs the SAME blackjack-core.js / tables.js / economy.js the page runs
+ * It runs the SAME blackjack-core.js / tcp-core.js / tables.js / economy.js
+ * the page runs
  * (the byte-identical copies in ../_shared/, see sync-shared.js), so the
  * server deals, settles and rewards exactly as the harnesses verify. Nothing
- * here computes a payout (BJ.settle() does) or a reward (economy.js's
+ * here computes a payout (BJ.settle() / TCP.settle() do) or a reward (economy.js's
  * ACCOUNT ACTIONS do, the same functions the page calls offline).
  *
  * It talks to storage only through a small `store` object, so Node tests can
@@ -17,7 +18,8 @@
  *
  * What the player is sent: their balance, rank and economy state (quests,
  * vault, wheels, cosmetics: none of it secret), and each table's round with
- * the dealer's hole card hidden until the round is over. NEVER the shoe.
+ * the dealer's hole card (Three Card Poker: all three dealer cards) hidden
+ * until the round is over. NEVER the shoe.
  *
  * Classic UMD script: Node require()s it; Deno imports the _shared files and
  * then this, and it registers globalThis.PLAY.
@@ -27,11 +29,12 @@
     module.exports = factory(
       require('../_shared/blackjack-core.js'),
       require('../_shared/economy.js'),
-      require('../_shared/tables.js'));
+      require('../_shared/tables.js'),
+      require('../_shared/tcp-core.js'));
   } else {
-    root.PLAY = factory(root.BJ, root.ECON, root.TABLE_RULES);
+    root.PLAY = factory(root.BJ, root.ECON, root.TABLE_RULES, root.TCP);
   }
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (BJ, ECON, TABLE_RULES) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (BJ, ECON, TABLE_RULES, TCP) {
   'use strict';
 
   /** Online tables. Same rules objects the page builds (BJ_TABLES). */
@@ -39,8 +42,11 @@
     bj: BJ.makeRules(TABLE_RULES.blackjack),
     fb: BJ.makeRules(TABLE_RULES.freeBet),
   };
+  /** Every online table: the blackjack tables above, plus Three Card Poker. */
+  const TABLE_IDS = [...Object.keys(TABLES), 'tcp'];
   const SIDE_KEYS = Object.keys(BJ.SIDE_BETS);
   const ACTIONS = ['insure', 'decline', 'hit', 'stand', 'double', 'split'];
+  const TCP_ACTIONS = ['play', 'fold'];
   const OPS = ['state', 'deal', 'act', 'claim', 'claimAll', 'spin', 'rescue', 'vault', 'buy', 'equip'];
   const MAX_RETRIES = 4;
 
@@ -77,8 +83,25 @@
     return v;
   }
 
-  function tableView(ts, chips) {
+  /** A Three Card Poker hand as the player may see it: dealer's cards hidden until done. */
+  function tcpRoundView(r) {
+    if (!r) return null;
+    const v = clone(r);
+    if (r.phase !== 'done') v.dealer = r.dealer.map(() => null);
+    return v;
+  }
+
+  function tableView(ts, chips, t) {
     const r = ts.round;
+    if (t === 'tcp') {
+      return {
+        seq: ts.seq,
+        rounds: ts.n,
+        round: tcpRoundView(r),
+        legal: r ? { play: chips >= r.bets.ante, fold: true } : null,
+        last: tcpRoundView(ts.last),
+      };
+    }
     return {
       seq: ts.seq,
       rounds: ts.n,
@@ -165,12 +188,74 @@
     settled(turn, t);
   }
 
+  /* --------------------------------------------------- three card poker -- */
+
+  // A fresh 52-card deck every hand (TCP.dealHand), so the table keeps no shoe:
+  // only the hand in progress, whose dealer cards the player never sees early.
+
+  function tcpDeal(turn, req, randInt) {
+    const rules = TABLE_RULES.tcp, ts = turn.ts, a = turn.acct;
+    if (ts.round) refuse('round_in_progress', 'Finish the current hand first.');
+    const b = req.bets;
+    if (!b || typeof b !== 'object' || Array.isArray(b)) refuse('bad_request', 'Bad bets.');
+    if (Object.keys(b).some(k => !TCP.BET_KEYS.includes(k))) refuse('bad_request', 'Unknown bet.');
+    const bets = { ante: b.ante || 0, pp: b.pp || 0, scb: b.scb || 0 };
+    const err = TCP.betError(bets, rules);
+    if (err) refuse('bad_bet', err);
+    const limit = rankOf(a.econ).maxBet;
+    if (Math.max(bets.ante, bets.pp, bets.scb) > limit) {
+      refuse('over_limit', `Your table limit is ${limit.toLocaleString('en-US')} per bet. Rank up to raise it.`);
+    }
+    const stake = bets.ante + bets.pp + bets.scb;
+    if (a.chips < stake) refuse('not_enough_chips', 'Not enough chips.');
+
+    const { player, dealer } = TCP.dealHand(randInt || BJ.cryptoRandInt);
+    turn.ref = `tcp:${ts.n + 1}`;
+    ts.round = { bets, player, dealer, wagered: stake, phase: 'decision' };
+    ts.last = null;
+    a.rows.push({ account: 'chips', amount: -stake, kind: 'bet', table_id: 'tcp', ref: turn.ref });
+    a.chips -= stake;
+    if (bets.ante === 0) tcpSettle(turn, false);   // side bets only: nothing to decide
+  }
+
+  function tcpAct(turn, req) {
+    const ts = turn.ts, r = ts.round, a = turn.acct;
+    if (!r) refuse('no_round', 'There is no hand in progress.');
+    if (!TCP_ACTIONS.includes(req.action)) refuse('bad_request', 'Unknown action.');
+    turn.ref = `tcp:${ts.n + 1}`;
+    const raised = req.action === 'play';
+    if (raised) {
+      const ante = r.bets.ante;
+      if (a.chips < ante) refuse('not_enough_chips', 'Not enough chips to play; you can only fold.');
+      a.rows.push({ account: 'chips', amount: -ante, kind: 'bet', table_id: 'tcp', ref: turn.ref });
+      a.chips -= ante;
+      r.wagered += ante;
+    }
+    tcpSettle(turn, raised);
+  }
+
+  /** TCP.settle() decides the payout; this pays it and lets the economy read the result. */
+  function tcpSettle(turn, raised) {
+    const ts = turn.ts, r = ts.round, a = turn.acct;
+    const res = TCP.settle(r.bets, r.player, r.dealer, raised, TABLE_RULES.tcp);
+    if (res.stake !== r.wagered) throw new Error('tcp: stake does not match chips taken');
+    if (res.returned > 0) {
+      a.rows.push({ account: 'chips', amount: res.returned, kind: 'payout', table_id: 'tcp', ref: turn.ref });
+      a.chips += res.returned;
+    }
+    ts.last = Object.assign({}, r, { raised, phase: 'done', result: res });
+    ts.round = null;
+    ts.n++;
+    // After settlement, on facts only: XP, quests, promos. Can't touch the hand.
+    turn.ev.push(...ECON.afterRound(a, TCP.facts(res, r.bets, TABLE_RULES.tcp.minBet), turn.now));
+  }
+
   /* ------------------------------------------------------------ economy -- */
 
   /** Chips currently in play at any table (they count against "broke"). */
   async function inPlay(store, userId) {
     let n = 0;
-    for (const t of Object.keys(TABLES)) {
+    for (const t of TABLE_IDS) {
       const ts = await store.table(userId, t);
       if (ts && ts.round) n += ts.round.wagered;
     }
@@ -240,6 +325,8 @@
    *   { op: 'state' }
    *   { op: 'deal', table: 'bj'|'fb', seq, bet, side: { perfectPairs, twentyOnePlus3 } }
    *   { op: 'act',  table, seq, action: 'hit'|'stand'|'double'|'split'|'insure'|'decline' }
+   *   { op: 'deal', table: 'tcp', seq, bets: { ante, pp, scb } }
+   *   { op: 'act',  table: 'tcp', seq, action: 'play'|'fold' }
    *   { op: 'claim', i, day }        { op: 'claimAll' }
    *   { op: 'spin', wheel: 'bonus'|'rescue' }   ({ op: 'rescue' } = spin rescue)
    *   { op: 'vault', amount }        (+ deposit, - withdraw)
@@ -260,7 +347,7 @@
     if (!req || typeof req !== 'object') return fail('bad_request', 'Bad request.');
     if (!OPS.includes(req.op)) return fail('bad_request', 'Unknown op.');
     const game = req.op === 'deal' || req.op === 'act';
-    if (game && !TABLES[req.table]) return fail('bad_request', 'Unknown table.');
+    if (game && !TABLE_IDS.includes(req.table)) return fail('bad_request', 'Unknown table.');
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       let w = await store.wallet(userId);
@@ -282,7 +369,10 @@
         if (game) {
           turn.ts = (await store.table(userId, t)) || emptyTable();
           if (req.seq !== turn.ts.seq) refuse('stale', 'The table changed (another tab or a double click). Showing the current state.');
-          if (req.op === 'deal') deal(turn, t, req, randInt);
+          if (t === 'tcp') {
+            if (req.op === 'deal') tcpDeal(turn, req, randInt);
+            else tcpAct(turn, req);
+          } else if (req.op === 'deal') deal(turn, t, req, randInt);
           else act(turn, t, req, randInt);
           turn.ts.seq++;
         } else if (req.op !== 'state') {
@@ -294,7 +384,7 @@
         const cur = { chips: w.chips, econ: ECON.normalizeEcon(clone(w.econ || {}), TABLE_RULES.startingChips) };
         cur.econ.vault.balance = w.vault;
         const out = { ok: false, error: e.code, message: e.message, wallet: walletView(cur) };
-        if (game) { out.table = t; out.view = tableView((await store.table(userId, t)) || emptyTable(), w.chips); }
+        if (game) { out.table = t; out.view = tableView((await store.table(userId, t)) || emptyTable(), w.chips, t); }
         return out;
       }
 
@@ -314,9 +404,9 @@
       const out = Object.assign({ ok: true, wallet: walletView(acct), events: turn.ev }, turn.extra);
       if (req.op === 'state') {
         out.tables = {};
-        for (const k of Object.keys(TABLES)) out.tables[k] = tableView((await store.table(userId, k)) || emptyTable(), acct.chips);
+        for (const k of TABLE_IDS) out.tables[k] = tableView((await store.table(userId, k)) || emptyTable(), acct.chips, k);
       }
-      if (game) { out.table = t; out.view = tableView(turn.ts, acct.chips); out.shuffled = turn.shuffled; }
+      if (game) { out.table = t; out.view = tableView(turn.ts, acct.chips, t); out.shuffled = turn.shuffled; }
       return out;
     }
     return fail('busy', 'The server was busy with another request. Try again.');
@@ -324,5 +414,5 @@
 
   function fail(error, message) { return { ok: false, error, message }; }
 
-  return { handle, TABLES, roundView, tableView, rankOf, PlayError };
+  return { handle, TABLES, TABLE_IDS, roundView, tcpRoundView, tableView, rankOf, PlayError };
 });

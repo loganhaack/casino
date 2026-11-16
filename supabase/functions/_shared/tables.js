@@ -1,5 +1,5 @@
 /*
- * Table rules for blackjack and Free Bet: the ONE copy.
+ * Table rules for blackjack, Free Bet and Three Card Poker: the ONE copy.
  *
  * Loaded by index.html (<script src>), by the Node test harnesses (require),
  * and (Stage 2) by the server that deals online games. Before this file the
@@ -48,6 +48,27 @@
 
     bjMinBet: 10,
     bjBetStep: 10,
+
+    // Three Card Poker paytables (pays N to 1), played by tcp-core.js.
+    // Change any of these and re-run
+    //   node enumerate.js && node test-payouts.js 200000
+    // and update the edges below (and the expected edges in test-payouts.js).
+    tcp: {
+      // Pair Plus, the common 1-3-6-30-40 table.
+      pairPlus: { pair: 1, flush: 3, straight: 6, trips: 30, straightFlush: 40 },
+      // Ante Bonus: paid on the ante whether or not the dealer qualifies or wins.
+      anteBonus: { straight: 1, trips: 4, straightFlush: 5 },
+      // Six Card Bonus (Wizard of Odds pay table 1): best 5 of your 3 + the dealer's 3.
+      // Three of a kind MUST pay: leaving it out swings the edge by ~25 points.
+      sixCard: {
+        trips: 7, straight: 10, flush: 15, fullHouse: 20,
+        quads: 100, straightFlush: 200, royalFlush: 1000,
+      },
+      minBet: 5,
+      betStep: 5,
+    },
+    // Exact, from enumerate.js (not simulated).
+    tcpHouseEdge: { ante: 0.033730, pairPlus: 0.072760, sixCard: 0.085614 },
 
     // Opening balance: offline (a new save) and online (a new server wallet).
     startingChips: 1000,
