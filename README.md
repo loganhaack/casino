@@ -199,6 +199,8 @@ through saving (the vault), not handouts. Never through odds.
 - [x] Slots: three machines (classic 3-reel, 20-line, 243-ways) with exact
       PAR sheets by complete enumeration (`enumerate-slots.js`), published
       reel strips, free spins, online and offline.
+- [x] Linked progressive jackpots (Mini/Minor must-hit-by with published
+      SHA-256 commitments, Major/Grand mystery), big-hit popups, sound.
 
 ## Extending it
 

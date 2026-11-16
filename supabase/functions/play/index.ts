@@ -18,6 +18,7 @@
 import '../_shared/blackjack-core.js';
 import '../_shared/tcp-core.js';
 import '../_shared/slots-core.js';
+import '../_shared/jackpot.js';
 import '../_shared/tables.js';
 import '../_shared/economy.js';
 import './logic.js';
@@ -83,11 +84,37 @@ const store = {
   },
   async commit(u: string, version: number, c: {
     chips: number; vault: number; econ: unknown; ledger: unknown[]; tableId?: string; tableState?: unknown;
+    pool?: { version: number; state: unknown }; hits?: unknown[];
   }) {
-    await rpc('commit_turn', {
+    const args = {
       p_user: u, p_version: version, p_chips: c.chips, p_vault: c.vault, p_econ: c.econ,
       p_ledger: c.ledger, p_table_id: c.tableId ?? null, p_table_state: c.tableState ?? null,
-    });
+    };
+    // A spin that touched the jackpot pool commits wallet + pool together.
+    if (c.pool) await rpc('commit_spin', { ...args, p_pool_version: c.pool.version, p_pool: c.pool.state, p_hits: c.hits ?? [] });
+    else await rpc('commit_turn', args);
+  },
+  // The shared jackpot pool: { state, version }, { state: null, version: -1 }
+  // before the first spin creates it, or null if the jackpot migration hasn't
+  // been applied (slots then run without jackpots).
+  async pool() {
+    try {
+      const rows = await db('jackpot_pool?id=eq.1&select=state,version');
+      return rows[0] ? { state: rows[0].state, version: rows[0].version } : { state: null, version: -1 };
+    } catch (e) {
+      if (e instanceof DbError && (e.code === 'PGRST205' || e.code === '42P01')) return null;
+      throw e;
+    }
+  },
+  async recentHits(n: number) {
+    try {
+      const rows = await db(`jackpot_hits?select=at,tier,user_id,display_name,table_id,amount,reveal&order=id.desc&limit=${n}`);
+      return rows.map((r: { at: string; tier: string; user_id: string; display_name: string; table_id: string; amount: number; reveal: unknown }) =>
+        ({ at: r.at, tier: r.tier, user_id: r.user_id, name: r.display_name, table_id: r.table_id, amount: r.amount, reveal: r.reveal }));
+    } catch (e) {
+      if (e instanceof DbError && (e.code === 'PGRST205' || e.code === '42P01')) return [];
+      throw e;
+    }
   },
 };
 

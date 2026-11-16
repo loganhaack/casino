@@ -25,7 +25,7 @@ node test-blackjack-payouts.js # real page code: chip accounting, house edge, de
 node test-economy.js           # wheels, quests, events, ledger, "deal is indifferent to who you are", ~30s
 node enumerate-slots.js        # exact slot PAR sheets, every reel-stop combination, ~2min; fails if SLOTS.PAR drifts
 node test-slots.js             # real page code: slot chip accounting, RTP within 4 SE, free spins + reload, ~3min
-node sync-shared.js            # copy blackjack-core/tcp-core/slots-core/tables/economy into supabase/functions/_shared/
+node sync-shared.js            # copy blackjack-core/tcp-core/slots-core/jackpot/tables/economy into supabase/functions/_shared/
 node sync-shared.js --check    # fails if the server's copies drift from the root files
 node test-server.js            # online table server vs in-memory commit_turn: ledger, no leaks, same game, ~30s
 node test-online-page.js       # real page code playing online against the real server logic, ~10s
@@ -206,7 +206,7 @@ weekly event calendar, daily quests, and the cosmetics shop.
   then explicit column grants and policies. Verify from outside with the
   publishable key that anonymous reads/writes get `42501`.
 - Edge Functions load `supabase/functions/_shared/` copies of
-  `blackjack-core.js`, `tcp-core.js`, `slots-core.js`, `tables.js` and `economy.js`. Those are byte-identical
+  `blackjack-core.js`, `tcp-core.js`, `slots-core.js`, `jackpot.js`, `tables.js` and `economy.js`. Those are byte-identical
   copies made by `sync-shared.js`; never edit them. Edit the root file, re-sync,
   and run `--check` before any deploy (the eval3() drift rule, server edition).
 - **Online server** is the `play` Edge Function. `logic.js` is all of its
@@ -264,6 +264,39 @@ symbols drawn via one hidden sprite.
   of chips by construction (`checkMachine()` rejects anything else).
 - Machines are original designs in real genres (stepper, 20-line, 243-ways).
   Don't rename them after, or restyle them as, real branded games.
+
+## Linked jackpots (online only)
+
+`jackpot.js` (classic script, `JACKPOT`) holds the rules; the server runs
+them, the page only shows meters. One pool, shared by every machine and
+every online player (`jackpot_pool`, one row; `jackpot_hits`; migration
+`20261116000001_jackpots.sql`). Until that migration is applied, the
+function runs slots without jackpots (`store.pool()` returns null).
+
+- Every paid spin contributes 1.00% of its bet in total (`rate` per tier, in
+  1/10,000ths). Free spins contribute nothing and can't win one.
+- Mini/Minor are must-hit-by: the drop point is drawn uniformly between the
+  meter and the cap at each reset, kept server-side only, and committed by
+  SHA-256 (published) then revealed on the hit. Never send `hp`/`salt` of
+  a live tier to a player. Major/Grand hit with chance cost / oddsPerChip.
+- Meters are integer units (1 chip = 10,000). Audit identity per tier:
+  `meter = seeded + contributed - paid` (`JACKPOT.auditError`).
+- Jackpot RNG is a separate stream from the reels, so a spin's stops never
+  depend on the pool. Jackpot wins are `payout` ledger rows, ref `jp:<tier>:<n>`.
+- Pool writes go through `commit_spin()` (pool under its own version, then
+  `commit_turn()` unchanged, one transaction); a racing spin gets 40001 and
+  the turn retries. Recent hits go to players by display name only, with
+  `mine` set for their own; never a user id.
+- Owner's decision (2026-11-16): jackpots are a pay that grows over time for
+  everyone, which hard rule 2 allows; odds never vary by player.
+
+## Sound and celebrations
+
+`sound.js` (`SFX`) synthesizes every sound with Web Audio; quiet, toggle in
+the header, preference in `casino.sound.v1`. The page calls `sfx(name, ms)`,
+which is a no-op without audio (Node harnesses). `bigHit()` is the
+full-screen popup (jackpots, slot wins of 25x+, table wins of 15x+). Both are
+presentation only and run after a result is settled; nothing reads them.
 
 ## Next up
 

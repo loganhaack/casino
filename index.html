@@ -626,7 +626,50 @@
   .strips .row .sym { width: 22px; height: 22px; }
   .strips .w { display: inline-flex; flex-direction: column; align-items: center; font: 9px var(--mono); color: var(--text-dim); }
   .strips .blankstop { width: 22px; height: 22px; border: 1px dashed rgba(255,255,255,.15); border-radius: 3px; }
+  /* ---------- linked jackpot meters ---------- */
+  .jp-bar { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; position: relative; }
+  .jp-tile { border-radius: 12px; padding: 8px 6px 7px; text-align: center; color: #fff; min-width: 0;
+    border: 2px solid rgba(255,255,255,.18); box-shadow: inset 0 0 18px rgba(0,0,0,.55), 0 4px 12px rgba(0,0,0,.45); }
+  .jp-grand { background: linear-gradient(180deg, #a3121c, #3d0207); border-color: #ffcf4a; }
+  .jp-major { background: linear-gradient(180deg, #6a1fb0, #23053f); }
+  .jp-minor { background: linear-gradient(180deg, #1c5fc2, #071e45); }
+  .jp-mini  { background: linear-gradient(180deg, #1d9a4e, #053118); }
+  .jp-name { font: 900 clamp(11px, 2.6vw, 15px)/1 'Arial Black', Impact, sans-serif; letter-spacing: .12em; color: #fff3b0; text-shadow: 0 0 8px rgba(255,200,60,.8); }
+  .jp-val { font: 700 clamp(14px, 3.8vw, 24px)/1.25 var(--mono); color: #ffe066; text-shadow: 0 0 10px rgba(255,210,60,.9); margin: 3px 0 1px; overflow-wrap: anywhere; }
+  .jp-grand .jp-val { font-size: clamp(16px, 4.4vw, 28px); }
+  .jp-how { font-size: 10px; opacity: .8; letter-spacing: .03em; }
+  .jp-bar.off .jp-tile { filter: grayscale(.75) brightness(.7); }
+  .jp-off { grid-column: 1 / -1; text-align: center; font-size: 12px; color: var(--text-dim); margin-top: -2px; }
+  .jp-tile.hit { animation: jpHit .35s ease-in-out 8 alternate; }
+  @keyframes jpHit { to { filter: brightness(1.8) drop-shadow(0 0 10px #ffd23b); } }
+  .jp-hits { display: grid; gap: 4px; margin-top: 8px; font-size: 12.5px; }
+  .jp-hits .h { display: flex; gap: 8px; justify-content: space-between; padding: 4px 6px; border-radius: 6px; background: rgba(255,255,255,.04); }
+  .jp-hits .ok { color: var(--win); } .jp-hits .bad { color: var(--lose); }
+  .mono-s { font: 11px var(--mono); color: var(--text-dim); overflow-wrap: anywhere; }
+
+  /* ---------- big-hit celebration (display only) ---------- */
+  #bigHit { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; overflow: hidden;
+    background: radial-gradient(ellipse at 50% 45%, rgba(70,20,0,.82), rgba(0,0,0,.9)); cursor: pointer; }
+  #bigHit[hidden] { display: none; }
+  .bh-box { position: relative; z-index: 2; text-align: center; padding: 26px 34px 22px; margin: 16px; border-radius: 22px;
+    border: 4px solid #ffcf4a; background: radial-gradient(ellipse at 50% 25%, #6a2400, #1a0500 75%);
+    box-shadow: 0 0 70px rgba(255,190,60,.75), inset 0 0 30px rgba(0,0,0,.6); animation: bhIn .55s cubic-bezier(.2,1.5,.4,1); }
+  .bh-grand .bh-box { border-color: #ff5a4a; box-shadow: 0 0 90px rgba(255,80,60,.85), inset 0 0 30px rgba(0,0,0,.6); }
+  .bh-major .bh-box { border-color: #c38bff; box-shadow: 0 0 80px rgba(170,100,255,.8), inset 0 0 30px rgba(0,0,0,.6); }
+  .bh-title { font: 900 clamp(28px, 9vw, 66px)/1 'Arial Black', Impact, sans-serif; letter-spacing: .04em; text-transform: uppercase;
+    color: #fff3b0; text-shadow: 0 0 18px #ff9d00, 0 4px 0 #000; }
+  .bh-amt { font: 800 clamp(30px, 10vw, 76px)/1.1 var(--mono); color: #ffd23b; text-shadow: 0 0 16px #ffb300, 0 3px 0 #000; margin: 12px 0 6px; }
+  .bh-sub { color: #ffe9a8; letter-spacing: .08em; text-transform: uppercase; font-size: 13px; margin-bottom: 14px; }
+  @keyframes bhIn { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  #bhCoins { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+  #bhCoins .coin { position: absolute; top: -40px; width: 24px; height: 24px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #fffbe0, #f5c84a 45%, #a8740c 80%); box-shadow: inset 0 0 0 2px #8a5a08, 0 0 8px rgba(255,200,60,.6);
+    animation: coinFall linear forwards; }
+  @keyframes coinFall { to { transform: translateY(115vh) rotateY(900deg) rotate(240deg); } }
+  @media (prefers-reduced-motion: reduce) { #bhCoins { display: none; } .bh-box { animation: none; } }
+
   @media (max-width: 560px) {
+    .jp-bar { gap: 5px; } .jp-tile { padding: 6px 3px; } .jp-how { font-size: 8.5px; }
     #game-slots .lobby { gap: 6px; }
     .sl-card { padding: 7px 4px; }
     .sl-card .mini .sym { width: 22px; height: 22px; }
@@ -667,6 +710,7 @@
         <div class="lbl" id="bankLbl">chips</div>
         <button class="mode" id="modeBtn" hidden></button>
       </div>
+      <button class="bell" id="sndBtn" aria-label="Sound" title="Sound effects on/off">&#128264;</button>
       <div class="bellwrap">
         <button class="bell" id="bell" aria-label="Notifications" title="Notifications">&#128276;<span class="badge" id="bellBadge" hidden>0</span></button>
         <div class="notes" id="notesPanel" hidden></div>
@@ -675,6 +719,11 @@
   </header>
   <div class="eventbar" id="eventBar" hidden></div>
   <div class="toasts" id="toasts" aria-live="polite"></div>
+  <div id="bigHit" hidden role="dialog" aria-live="assertive">
+    <div id="bhCoins"></div>
+    <div class="bh-box"><div class="bh-title" id="bhTitle"></div><div class="bh-amt" id="bhAmt"></div>
+      <div class="bh-sub" id="bhSub"></div><button class="sl-btn" id="bhClose">Collect</button></div>
+  </div>
 
   <!-- ===================== HOME ===================== -->
   <section id="game-home" hidden>
@@ -842,6 +891,7 @@
 
   <!-- ===================== SLOTS ===================== -->
   <section id="game-slots" hidden>
+    <div class="jp-bar" id="jpBar"></div>
     <div class="lobby" id="slLobby"></div>
     <div class="cab" id="slCab">
       <div class="marquee">
@@ -882,6 +932,10 @@
         <h3 style="margin-top:12px">Your play on this machine</h3>
         <table id="slStats"></table>
       </div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      <h3>Linked jackpots</h3>
+      <div id="jpInfo"></div>
     </div>
   </section>
 
@@ -1033,6 +1087,10 @@
      also loaded by enumerate-slots.js, the tests and the server), and their art. -->
 <script src="slots-core.js"></script>
 <script src="slots-art.js"></script>
+<!-- Linked progressive jackpot rules (the server runs them; the page shows the meters). -->
+<script src="jackpot.js"></script>
+<!-- Sound effects, synthesized (no files). Presentation only. -->
+<script src="sound.js"></script>
 <!-- Economy (ranks, wheels, quests, events, shop). Grants chips only; never
      touches game odds. Also loaded by the Node tests. -->
 <script src="economy.js"></script>
@@ -1329,7 +1387,8 @@ function cardEl(c, faceDown, fx) {
     d.innerHTML = `<div class="r">${RANKS[rankOf(c)]}<span class="cs">${SUITS[s]}</span></div><div class="s">${SUITS[s]}</div>`;
   }
   if (fx && !ANIM.off) {
-    if (fx.deal != null) { d.className += ' dealing'; setVar(d, '--deal', fx.deal); }
+    if (fx.deal != null) { d.className += ' dealing'; setVar(d, '--deal', fx.deal); sfx('card', fx.deal); }
+    if (fx.flip != null && !faceDown) sfx('flip', fx.flip);
     if (fx.flip != null && !faceDown) { d.className += ' flipping'; setVar(d, '--flip', fx.flip); }
   }
   return d;
@@ -1405,6 +1464,7 @@ const betHTML = amount => pileHTML(amount) + `<span>${amount.toLocaleString()}</
 
 /** Fly a copy of `amount` in chips from one element to another, starting `delay` ms from now. */
 function chipFly(fromEl, toEl, amount, delay, free) {
+  if (amount > 0) sfx('chip', delay);
   if (ANIM.off || !(amount > 0) || !fromEl || !toEl || !document.body) return;
   if (typeof fromEl.getBoundingClientRect !== 'function' || typeof toEl.getBoundingClientRect !== 'function') return;
   const a = fromEl.getBoundingClientRect(), b = toEl.getBoundingClientRect();
@@ -1642,6 +1702,8 @@ function tcpSettled(res, bets, raised, econLines) {
   $('msg').innerHTML += on ? onBrokeHint() : econRescueHint();
 
   for (const el of [$('dealerHand'), $('msg'), $('res-ante'), $('res-pp'), $('res-scb')]) animLater(el, revealed);
+  if (res.net > 0) sfx('win', revealed, res.net >= 3 * res.stake ? 2 : 1);
+  if (res.net >= 15 * res.stake && res.net >= 100) setTimeout(() => bigHit('Big win', res.net, 'Three Card Poker', null), revealed + 400);
   animHold(tcpChipSettle(bets, raised, res.ppRet, res.scbRet, res.anteRet, revealed));
   bankRelease();
   renderStats();
@@ -1962,6 +2024,8 @@ function bjSettle(r, prefix) {
   bankRelease();
   bjRenderStats();
   bjRenderLog();
+  if (net > 0) sfx('win', animLeft(), net >= 2 * r.baseBet ? 2 : 1);
+  if (net >= 15 * r.wagered && net >= 100) setTimeout(() => bigHit('Big win', net, T().name, null), animLeft() + 400);
 }
 
 /* Display only: what each table last drew, so a render animates just the
@@ -2641,6 +2705,44 @@ async function acctBoot() {
 }
 
 /* ===========================================================================
+   SOUND AND BIG HITS (presentation only)
+   =========================================================================== */
+
+/** Play a sound effect (sound.js) in `ms`. A no-op where there is no audio. */
+function sfx(name, ms, arg) { if (typeof SFX === 'object') SFX.play(name, ms || 0, arg); }
+function renderSnd() {
+  const on = typeof SFX === 'object' && SFX.isOn();
+  $('sndBtn').innerHTML = on ? '&#128264;' : '&#128263;';
+  $('sndBtn').title = on ? 'Sound effects on (click to mute)' : 'Sound effects off (click to turn on)';
+}
+
+const escHTML = (x) => String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+let bhTimers = [];
+/**
+ * The full-screen celebration for a big hit, after the result is settled.
+ * tier: a jackpot tier id (styles it), or null for a big win.
+ */
+function bigHit(title, amount, sub, tier) {
+  for (const t of bhTimers) clearTimeout(t);
+  bhTimers = [];
+  const box = $('bigHit');
+  box.className = tier ? 'bh-' + tier : '';
+  $('bhTitle').textContent = title;
+  $('bhSub').textContent = sub || '';
+  // Falling coins: decoration, so Math.random is fine (nothing here has stakes).
+  $('bhCoins').innerHTML = ANIM.off ? '' : Array.from({ length: tier ? 48 : 30 }, () =>
+    `<i class="coin" style="left:${(Math.random() * 100).toFixed(1)}%;animation-delay:${(Math.random() * 1.8).toFixed(2)}s;animation-duration:${(1.8 + Math.random() * 1.7).toFixed(2)}s"></i>`).join('');
+  box.hidden = false;
+  const el = $('bhAmt'), steps = ANIM.off ? 1 : 30;
+  for (let k = 1; k <= steps; k++) bhTimers.push(setTimeout(() => { el.textContent = Math.round(amount * k / steps).toLocaleString(); }, ANIM.off ? 0 : k * 50));
+  if (ANIM.off) el.textContent = amount.toLocaleString();
+  sfx(tier ? 'jackpot' : 'bigWin');
+  bhTimers.push(setTimeout(closeBigHit, tier ? 9000 : 5500));
+}
+function closeBigHit() { $('bigHit').hidden = true; $('bhCoins').innerHTML = ''; }
+
+/* ===========================================================================
    SLOTS
    ---------------------------------------------------------------------------
    Every machine's math is slots-core.js (SLOTS): reel strips, paytables, the
@@ -2726,9 +2828,11 @@ function slotRecord(st, res, wasFree) {
   t.spins++;
   if (!wasFree) { t.paid++; t.wagered += res.cost; if (res.win > 0) t.hits++; if (res.award) t.features++; }
   else t.freeSpins++;
-  t.returned += res.win;
-  t.net += res.win - res.cost;
-  if (res.win > t.biggest) t.biggest = res.win;
+  const jw = res.jackpotWin || 0;           // linked jackpots (online only), paid with the spin
+  t.returned += res.win + jw;
+  t.net += res.win + jw - res.cost;
+  if (jw) t.jackpots = (t.jackpots || 0) + (res.jackpots || []).length;
+  if (res.win + jw > t.biggest) t.biggest = res.win + jw;
   st.last = { stops: res.stops, win: res.win, cost: res.cost };
   st.history.push({ t: Date.now(), level: st.level, stops: res.stops.join(','), cost: res.cost, win: res.win, free: wasFree, award: res.award });
   if (st.history.length > 2000) st.history.splice(0, st.history.length - 2000);
@@ -2780,8 +2884,11 @@ function slotAnimate(m, res, from) {
   $('slReels').classList.remove('showing');
   $('slLines').innerHTML = '';
   void $('slReels').offsetHeight;   // start position applied before the transition
+  sfx('spin', 0, durs[durs.length - 1]);
   for (let i = 0; i < m.reels.length; i++) {
     const el = $('slStrip' + i), d = durs[i];
+    sfx('reelStop', d - 40);
+    if (durs[i] - (base + step * i) > 0) sfx('tease', base + step * i);
     el.style.transition = `transform ${d}ms cubic-bezier(.15,.6,.22,1.05)`;
     el.style.transform = 'translateY(0)';
     slotLater(() => el.classList.remove('spinning'), d - 140);
@@ -2802,7 +2909,7 @@ function slotShow(m, res, econLines) {
   slotCancelFx();
   const fx = slFx;
   const st = slotST();
-  bankHold(bankroll() - res.win);           // show the win only once the reels stop
+  bankHold(bankroll() - res.win - (res.jackpotWin || 0));   // show the win only once the reels stop
   const from = st.prevStops || res.stops.map(() => 0);
   st.prevStops = res.stops;
   $('slWin').textContent = '0';
@@ -2839,7 +2946,9 @@ function slotRevealWins(m, res, econLines, fx) {
   }
   if (res.wins.length > 6) lines.push(`and ${res.wins.length - 6} more`);
   if (res.mult > 1 && res.win) lines.push(`All wins x${res.mult}`);
-  slotCountUp(res.win, fx);
+  const jps = res.jackpots || [];
+  for (const h of jps) lines.unshift(`<strong class="win">${h.name.toUpperCase()} JACKPOT ${h.amount.toLocaleString()}</strong>`);
+  slotCountUp(res.win + (res.jackpotWin || 0), fx);
   const bet = SLOTS.totalBet(m, slotST().level);
   let banner = null;
   if (res.award && res.cost) banner = [`${res.award} Free Spins`, `All wins x${m.free.mult}`];
@@ -2847,6 +2956,15 @@ function slotRevealWins(m, res, econLines, fx) {
   else if (res.featureWon != null) banner = ['Feature win', res.featureWon.toLocaleString() + ' chips'];
   else if (res.win >= 50 * bet) banner = ['Mega win', res.win.toLocaleString()];
   else if (res.win >= 15 * bet) banner = ['Big win', res.win.toLocaleString()];
+  // Sound and the big-hit popup, by size (the popup is for jackpots and 25x+).
+  const topJp = jps.slice().sort((a, b) => b.amount - a.amount)[0];
+  if (topJp) {
+    const how = topJp.reveal ? 'its drop point was committed in advance' : `1 in ${JACKPOT.TIER_BY_ID[topJp.tier].oddsPerChip.toLocaleString()} per chip`;
+    bigHit(`${topJp.name} jackpot`, topJp.amount, `${m.name} · ${how}`, topJp.tier);
+    for (const id of jps.map(h => h.tier)) { const el = $('jpT-' + id); if (el.classList) el.classList.add('hit'); }
+  } else if (res.win >= 25 * bet) bigHit(res.win >= 100 * bet ? 'Mega win' : 'Big win', res.win, `${m.name} · ${Math.round(res.win / bet)}x your bet`, null);
+  else if (res.award) sfx('feature');
+  else if (res.win > 0) sfx('win', 0, res.win >= 5 * bet ? 2 : 1);
   if (banner) {
     const b = $('slBanner');
     b.innerHTML = `${banner[0]}<small>${banner[1]}</small>`;
@@ -2883,7 +3001,7 @@ function slotCountUp(win, fx) {
   if (!win || ANIM.off) { el.textContent = win.toLocaleString(); return; }
   const steps = 18;
   for (let k = 1; k <= steps; k++) {
-    slotLater(() => { if (fx === slFx) el.textContent = Math.round(win * k / steps).toLocaleString(); }, k * 45);
+    slotLater(() => { if (fx === slFx) { el.textContent = Math.round(win * k / steps).toLocaleString(); if (k % 3 === 0) sfx('coin'); } }, k * 45);
   }
 }
 
@@ -2953,7 +3071,83 @@ function slotRender() {
   $('slWin').textContent = st.last ? st.last.win.toLocaleString() : '0';
   if (st.free) $('slMsg').textContent = `Free spins in progress: ${st.free.left} left. Press FREE SPIN to continue.`;
   else if (!st.last) $('slMsg').textContent = m.tagline;
-  slotMeters(); slotButtons(); slotPaytable(); slotPar(); slotStats();
+  slotMeters(); slotButtons(); slotPaytable(); slotPar(); slotStats(); jpRender();
+}
+
+/* ---------- linked jackpots (online only; rules in jackpot.js, run by the server) ---------- */
+
+const JP_SHOWN = {};   // display only: the meter value drawn, ticking up toward the server's
+const fmtJp = (x) => x.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtOdds = (n) => n >= 1e6 ? (n / 1e6).toLocaleString() + 'M' : n.toLocaleString();
+const jpView = () => (online() && ON.jackpot ? ON.jackpot : null);
+const jpOK = {};       // display only: reveal key -> verified?
+
+function jpTiers() {
+  const v = jpView();
+  if (v) return v.tiers;
+  if (typeof JACKPOT !== 'object') return [];
+  return JACKPOT.TIERS.map(t => ({ id: t.id, name: t.name, meter: t.seed, mustHitBy: t.mustHitBy, oddsPerChip: t.oddsPerChip }));
+}
+
+function jpRender() {
+  const v = jpView(), tiers = jpTiers();
+  $('jpBar').className = 'jp-bar' + (v ? '' : ' off');
+  $('jpBar').innerHTML = tiers.slice().reverse().map(t =>
+    `<div class="jp-tile jp-${t.id}" id="jpT-${t.id}"><div class="jp-name">${t.name.toUpperCase()}</div>` +
+    `<div class="jp-val" id="jpV-${t.id}">${fmtJp(v && JP_SHOWN[t.id] != null ? JP_SHOWN[t.id] : t.meter)}</div>` +
+    `<div class="jp-how">${t.mustHitBy ? 'Must hit by ' + t.mustHitBy.toLocaleString() : '1 in ' + fmtOdds(t.oddsPerChip) + ' per chip'}</div></div>`).join('') +
+    (v ? '' : '<div class="jp-off">Linked jackpots are online only: one pool shared by every player. Sign in to play for them.</div>');
+  jpInfo();
+}
+
+/** Display only: meters creep up toward the server's value, like a real progressive sign. */
+function jpTick() {
+  const v = jpView();
+  if (!v || S.game !== 'slots') return;
+  for (const t of v.tiers) {
+    const cur = JP_SHOWN[t.id];
+    let next;
+    if (cur == null || t.meter < cur) next = t.meter;              // first view, or it just hit and reset
+    else next = Math.min(t.meter, cur + Math.max(0.01, (t.meter - cur) / 10));
+    next = Math.round(next * 100) / 100;
+    if (next !== cur) { JP_SHOWN[t.id] = next; $('jpV-' + t.id).textContent = fmtJp(next); }
+  }
+}
+
+function jpInfo() {
+  const v = jpView(), tiers = jpTiers();
+  if (typeof JACKPOT !== 'object') return;
+  const pct = (100 * JACKPOT.totalRate()).toFixed(2);
+  let h = `<p class="sub" style="margin:0 0 8px">Four jackpots linked across all three machines and every online player. Each paid spin puts ${pct}% of its bet onto the meters (free spins add nothing). ` +
+    'Mini and Minor are <strong>must-hit-by</strong>: each is certain to drop before its cap, at a point drawn at random when it resets, between the meter and the cap. ' +
+    'We publish a SHA-256 commitment to that point and reveal it when it drops, so you can check it was fixed in advance (a real casino keeps it secret). ' +
+    'Major and Grand are <strong>mystery</strong> jackpots: every paid spin has a chance of chips-bet in the odds, the same for everyone.</p>';
+  h += '<table>' + tiers.map(t => `<tr class="stat-row"><td>${t.name}</td><td>${t.mustHitBy
+    ? `drops by ${t.mustHitBy.toLocaleString()}${v ? `<div class="mono-s" title="${t.commit || ''}">${t.commit ? 'commitment ' + t.commit.slice(0, 24) + '…' : 'drop point drawn on the first spin'}</div>` : ''}`
+    : `1 in ${t.oddsPerChip.toLocaleString()} per chip bet`}</td></tr>`).join('') + '</table>';
+  if (v) {
+    const mv = JACKPOT.mysteryValuePerChip(v);
+    h += `<p class="sub" style="margin:8px 0 0">Right now Major and Grand are worth ${(100 * mv).toFixed(3)}% of each chip you bet, on top of the machine's RTP, and that rises as the meters climb.</p>`;
+    const hits = ON.jpHits || [];
+    if (hits.length) {
+      h += '<div class="jp-hits">' + hits.map(x => {
+        const key = x.at + x.tier + x.amount;
+        const mm = SLOTS.MACHINES[(x.table_id || '').slice(5)];
+        const ver = x.reveal ? (jpOK[key] === true ? '<span class="ok" title="SHA-256 of the revealed drop point and salt matches the commitment published before it dropped">✓ verified</span>'
+          : jpOK[key] === false ? '<span class="bad">does not match</span>' : '<span>checking…</span>') : '';
+        return `<div class="h"><span><strong>${escHTML(x.tier.toUpperCase())}</strong> ${x.amount.toLocaleString()} &middot; ${escHTML(x.mine ? 'you' : x.name || 'A player')}${mm ? ' &middot; ' + escHTML(mm.name) : ''}</span>` +
+          `<span>${fmtAgo(Date.parse(x.at))} ${ver}</span></div>`;
+      }).join('') + '</div>';
+      for (const x of hits) {
+        const key = x.at + x.tier + x.amount;
+        if (x.reveal && jpOK[key] === undefined && globalThis.crypto && globalThis.crypto.subtle) {
+          jpOK[key] = null;
+          JACKPOT.verifyReveal(x.tier, x.reveal).then(okk => { jpOK[key] = okk; if (S.game === 'slots') jpInfo(); }).catch(() => {});
+        }
+      }
+    } else h += '<p class="sub" style="margin:8px 0 0">No jackpots have dropped yet.</p>';
+  }
+  $('jpInfo').innerHTML = h;
 }
 
 function slotPaytable() {
@@ -3002,6 +3196,7 @@ function slotPar() {
   if (m.free) rows.push(['Free spins', `1 in ${(1 / P.feature).toFixed(1)} paid spins`]);
   rows.push(['Volatility', `${slotVol(m)} (${P.sd.toFixed(2)} bets per spin, base game)`]);
   let h = '<table>' + rows.map(([a, b]) => `<tr class="stat-row"><td>${a}</td><td>${b}</td></tr>`).join('') + '</table>';
+  if (typeof JACKPOT === 'object') h += `<p class="sub" style="margin:8px 0 0">Online, ${(100 * JACKPOT.totalRate()).toFixed(2)}% of each paid spin also goes onto the linked jackpots below; the RTP above doesn't include them.</p>`;
   h += `<p class="sub" style="margin:8px 0">Exact, not simulated: enumerate-slots.js runs every one of the ${combos.toLocaleString()} reel-stop combinations` +
     ` through the same code that spins these reels. Each spin picks one stop per reel, uniformly, with crypto.getRandomValues. Nothing else: no near-miss logic, and nothing about you or your history.</p>`;
   h += '<details><summary>Reel strips</summary><div class="strips">' + m.reels.map((r, i) =>
@@ -3023,6 +3218,7 @@ function slotStats() {
   if (t.wagered) rows.push(['Observed return', `${pct(t.returned / t.wagered)} <span style="color:#667">vs ${pct(m.par.rtp)}</span>`]);
   if (t.paid) rows.push(['Hit rate', `${pct(t.hits / t.paid)} <span style="color:#667">vs ${pct(m.par.hit)}</span>`]);
   if (t.paid && m.free) rows.push(['Features', `${t.features} <span style="color:#667">vs ${(t.paid * m.par.feature).toFixed(1)} expected</span>`]);
+  if (t.jackpots) rows.push(['Jackpots won', t.jackpots.toLocaleString()]);
   if (t.biggest) rows.push(['Biggest win', t.biggest.toLocaleString()]);
   $('slStats').innerHTML = rows.map(([a, b]) => `<tr class="stat-row"><td>${a}</td><td>${b}</td></tr>`).join('');
 }
@@ -3124,6 +3320,7 @@ async function onBoot() {
     for (const t of ONLINE_GAMES) onApply(t, d.tables[t]);
     if (d.tables.tcp) onTcpApply(d.tables.tcp);
     for (const id of SLOTS.MACHINE_IDS) if (d.tables['slot_' + id]) onSlotApply(id, d.tables['slot_' + id]);
+    onJackpot(d);
     econAnnounce(d.events || []);   // e.g. yesterday's unclaimed quests, vault interest
   } catch (e) {
     toast('info', 'Online play unavailable', 'Couldn\'t reach the table server, so the tables are using this browser\'s chips. Reload to try again.');
@@ -3355,6 +3552,38 @@ async function onTcpSend(body) {
 
 /* ---------- slots online ---------- */
 
+/**
+ * Jackpot meters and recent hits from any server reply that carries them.
+ * Another player's new hit is announced like a casino floor would.
+ */
+function onJackpot(d) {
+  if (!d || !('jackpot' in d) || !ON) return;
+  ON.jackpot = d.jackpot;
+  const hits = d.jpHits || [];
+  if (!ON.jpSeen) { ON.jpSeen = new Set(hits.map(x => x.at + x.tier + x.amount)); }   // old news on first load
+  else {
+    for (const x of hits.slice().reverse()) {
+      const key = x.at + x.tier + x.amount;
+      if (ON.jpSeen.has(key)) continue;
+      ON.jpSeen.add(key);
+      if (x.mine) continue;   // your own: the spin itself celebrates it
+      const mm = SLOTS.MACHINES[(x.table_id || '').slice(5)];
+      toast('chips', `${escHTML(x.name || 'A player')} hit the ${escHTML(x.tier.toUpperCase())} jackpot!`, `${x.amount.toLocaleString()} chips${mm ? ' on ' + escHTML(mm.name) : ''}.`);
+      sfx('floor');
+    }
+  }
+  ON.jpHits = hits;
+  if (S.game === 'slots') jpRender();
+}
+
+let jpPolling = false;
+/** While the slots tab is open online, refresh the meters every 15 seconds. */
+function jpPoll() {
+  if (!online() || S.game !== 'slots' || ON.busy || jpPolling || (typeof document !== 'undefined' && document.hidden)) return;
+  jpPolling = true;
+  onCall({ op: 'pool' }).then(d => { if (d && d.ok) onJackpot(d); }).catch(() => {}).then(() => { jpPolling = false; });
+}
+
 /** Copy the server's slot table view (its seq and any running feature) into ON.slots. */
 function onSlotApply(id, view) {
   const st = ON.slots.m[id];
@@ -3389,6 +3618,7 @@ async function onSlotSpin() {
   const wasFree = !!st.free;
   if (d.view) onSlotApply(id, d.view);   // refusals carry the current view too
   econRenderHeader();
+  onJackpot(d);
   if (!d.ok) { slAuto = 0; $('slMsg').textContent = d.message || 'The server refused that.'; slotMeters(); slotButtons(); return; }
   const res = d.view.last;
   slotRecord(st, res, wasFree);
@@ -4079,6 +4309,20 @@ $('btnFold').onclick = () => {
   if (phase !== 'decision' || animBusy()) return;
   if (online()) onTcpAct('fold'); else resolve(false);
 };
+
+/* ---------- sound + big hits wiring ---------- */
+$('sndBtn').onclick = () => {
+  if (typeof SFX !== 'object') return;
+  SFX.setOn(!SFX.isOn());
+  renderSnd();
+  sfx('chip');
+};
+$('bigHit').onclick = closeBigHit;
+renderSnd();
+if (typeof setInterval === 'function') {   // display timers (absent in some test sandboxes)
+  setInterval(jpTick, 120);
+  setInterval(jpPoll, 15000);
+}
 
 /* ---------- slots wiring ---------- */
 $('slSpin').onclick = () => {

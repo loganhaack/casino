@@ -29,6 +29,7 @@ const TABLE_RULES = require('./tables.js');
 const PLAY = require('./supabase/functions/play/logic.js');
 const TCP = require('./tcp-core.js');
 const SLOTS = require('./slots-core.js');
+const JACKPOT = require('./jackpot.js');
 
 const ROUNDS = parseInt(process.argv[2], 10) || 20000;
 let pass = 0, fail = 0;
@@ -57,10 +58,15 @@ const SIGN = {
   shop: ['chips', -1], interest: ['vault', 1], vault: [null, 0],
 };
 const clone = (x) => JSON.parse(JSON.stringify(x));   // what jsonb does to it
-function memStore() {
+/**
+ * In-memory store with commit_turn()'s rules. opts.jackpot: also the shared
+ * jackpot pool with commit_spin()'s rules (its own version; -1 = create).
+ */
+function memStore(opts) {
   const wallets = new Map(), tables = new Map(), ledger = [];
+  const jp = { state: null, version: -1, hits: [] };
   const s = {
-    wallets, tables, ledger,
+    wallets, tables, ledger, jp,
     beforeCommit: null,                       // test hook: simulate a racing writer
     async wallet(u) { return wallets.has(u) ? clone(wallets.get(u)) : null; },
     async openWallet(u, opening) {
@@ -75,6 +81,10 @@ function memStore() {
       if (s.beforeCommit) { const f = s.beforeCommit; s.beforeCommit = null; await f(); }
       const w = wallets.get(u);
       if (w.version !== version) { const e = new Error('stale'); e.code = '40001'; throw e; }
+      if (c.pool) {
+        if (!(opts && opts.jackpot)) throw new Error('no jackpot table');
+        if (c.pool.version !== jp.version) { const e = new Error('stale pool'); e.code = '40001'; throw e; }
+      }
       let dc = 0, dv = 0, xfer = 0;
       for (const r of c.ledger) {
         const rule = SIGN[r.kind];
@@ -95,11 +105,17 @@ function memStore() {
         const k = u + '/' + c.tableId;
         if (c.tableState == null) tables.delete(k); else tables.set(k, clone(c.tableState));
       }
+      if (c.pool) { jp.state = clone(c.pool.state); jp.version = jp.version + 1; }
+      for (const h of c.hits || []) jp.hits.push({ at: new Date().toISOString(), user_id: u, tier: h.tier, amount: h.amount, table_id: h.table_id, name: 'Player ' + u.slice(0, 4), reveal: h.reveal });
     },
     ledgerSum(u, account = 'chips') {
       return ledger.filter(r => r.user === u && r.account === account).reduce((a, r) => a + r.amount, 0);
     },
   };
+  if (opts && opts.jackpot) {
+    s.pool = async () => ({ state: jp.state ? clone(jp.state) : null, version: jp.version });
+    s.recentHits = async (n) => clone(jp.hits.slice(-n).reverse());
+  }
   return s;
 }
 
@@ -729,6 +745,120 @@ async function main() {
     ok(lv1.length === direct.length && lv1.every((x, i) => x === direct[i]), 'server spins identical to SLOTS.play driven directly');
     ok(lv1.length === diamond.length && lv1.every((x, i) => x === diamond[i]), 'Lv1 with 1,000 and Diamond with 200,000 got different spins');
     report('same stops and wins as SLOTS.play (the page\'s code path); Lv1 vs Diamond identical (hard rule 2)', f);
+  }
+
+  section('linked jackpots');
+  {
+    // Rules first, on the pool alone, with a test config whose odds are high
+    // enough to measure: same code (JACKPOT.play), different numbers.
+    const f = fail, ri = seededInt(55);
+    const cfg = [
+      { id: 'mini',  name: 'Mini',  seed: 50,   rate: 20, mustHitBy: 120 },
+      { id: 'minor', name: 'Minor', seed: 100,  rate: 20, mustHitBy: 400 },
+      { id: 'major', name: 'Major', seed: 500,  rate: 30, oddsPerChip: 5000 },
+      { id: 'grand', name: 'Grand', seed: 2000, rate: 30, oddsPerChip: 50000 },
+    ];
+    const pool = await JACKPOT.blankPool(ri, cfg);
+    const N = 200000, cost = 10;
+    const hits = { mini: 0, minor: 0, major: 0, grand: 0 };
+    let paid = 0, contrib = 0, revealsOk = true, overCap = false, earlyOrLate = false;
+    for (let i = 0; i < N; i++) {
+      const before = { mini: pool.tiers.mini.commit, minor: pool.tiers.minor.commit };
+      const hpBefore = { mini: pool.tiers.mini.hp, minor: pool.tiers.minor.hp };
+      const meterBefore = { mini: pool.tiers.mini.meter, minor: pool.tiers.minor.meter };
+      const hs = await JACKPOT.play(pool, cost, ri, cfg);
+      contrib += cost * 100;
+      for (const h of hs) {
+        hits[h.tier]++; paid += h.amount;
+        const t = cfg.find(x => x.id === h.tier);
+        if (t.mustHitBy) {
+          if (h.amount > t.mustHitBy) overCap = true;
+          if (h.reveal.commit !== before[h.tier] || !(await JACKPOT.verifyReveal(h.tier, h.reveal)) || h.reveal.hp !== hpBefore[h.tier]) revealsOk = false;
+          // it hit on the spin that carried the meter to the committed point, not before
+          if (!(meterBefore[h.tier] < h.reveal.hp && meterBefore[h.tier] + cost * t.rate >= h.reveal.hp)) earlyOrLate = true;
+        }
+      }
+      if (i % 5000 === 0) ok(!JACKPOT.auditError(pool, cfg), 'pool audit: ' + JACKPOT.auditError(pool, cfg));
+    }
+    ok(!JACKPOT.auditError(pool, cfg), 'pool audit at the end');
+    ok(revealsOk, 'a must-hit-by hit did not match the commitment published before it');
+    ok(!overCap, 'a must-hit-by jackpot paid more than its cap');
+    ok(!earlyOrLate, 'a must-hit-by jackpot hit before or after its drop point');
+    for (const t of cfg.filter(x => x.oddsPerChip)) {
+      const p = cost / t.oddsPerChip, e = N * p, sd = Math.sqrt(N * p * (1 - p));
+      ok(Math.abs(hits[t.id] - e) < 4 * sd, `${t.id}: ${hits[t.id]} hits vs ${e} expected (${((hits[t.id] - e) / sd).toFixed(2)} SD)`);
+    }
+    // must-hit-by: the drop point is uniform on (start, cap], so the mean rise between hits is about (cap - seed) / 2
+    for (const t of cfg.filter(x => x.mustHitBy)) {
+      const meanRise = (N * cost * t.rate / JACKPOT.U) / hits[t.id];
+      ok(Math.abs(meanRise - (t.mustHitBy - t.seed) / 2) < 0.06 * (t.mustHitBy - t.seed), `${t.id}: mean rise ${meanRise.toFixed(1)} vs ~${(t.mustHitBy - t.seed) / 2}`);
+    }
+    const free = await JACKPOT.play(pool, 0, ri, cfg);
+    ok(free.length === 0, 'a free spin (cost 0) contributed or hit');
+    report(`${N.toLocaleString()} spins on a fast test pool: meter = seeded + contributed - paid; must-hit-by never over cap, hits exactly at the committed point (${hits.mini + hits.minor} reveals verified); mystery tiers hit at cost/odds (${hits.major} Major, ${hits.grand} Grand)`, f);
+  }
+  {
+    // Through the server: two players share one pool; payouts are ledgered; nothing leaks.
+    const f = fail, st = memStore({ jackpot: true }), ri = seededInt(4), jri = seededInt(5);
+    for (const u of ['a', 'b']) await PLAY.handle(st, u, { op: 'state' });
+    const p0 = await PLAY.handle(st, 'a', { op: 'pool' });
+    ok(p0.ok && p0.jackpot && p0.jackpot.tiers.length === 4 && p0.jackpot.tiers.every(t => t.commit == null), 'before the first spin: seeds, no commitment yet');
+    const seq = { a: 0, b: 0 };
+    let jpTotal = 0, jpHits = 0, leak = false;
+    for (let i = 0; i < 6000; i++) {
+      const u = i % 2 ? 'b' : 'a';
+      const w = st.wallets.get(u);
+      if (w.chips < 2000) await st.commit(u, w.version, { chips: w.chips + 20000, vault: 0, econ: w.econ, ledger: [{ account: 'chips', amount: 20000, kind: 'quests' }] });
+      // A racing writer bumps the pool between this player's read and commit, now and then.
+      if (i % 97 === 0) st.beforeCommit = async () => { st.jp.version++; };
+      const r = await PLAY.handle(st, u, { op: 'deal', table: 'slot_galleon', seq: seq[u], level: 25 }, { randInt: ri, jpRandInt: jri });
+      if (!r.ok) { ok(false, 'spin refused: ' + r.message); break; }
+      seq[u] = r.view.seq;
+      for (const h of r.view.last.jackpots) { jpTotal += h.amount; jpHits++; }
+      if (/"hp"|"salt"/.test(JSON.stringify(r.jackpot))) leak = true;
+      ok(st.wallets.get(u).chips === st.ledgerSum(u), 'chips == ledger with jackpot payouts');
+    }
+    ok(!leak, 'a response carried a live drop point or salt');
+    ok(!JACKPOT.auditError(st.jp.state), 'live pool audit: ' + JACKPOT.auditError(st.jp.state));
+    const jpRows = st.ledger.filter(x => x.kind === 'payout' && /^jp:/.test(x.ref || '')).reduce((a, x) => a + x.amount, 0);
+    ok(jpRows === jpTotal && jpHits > 0, `jackpot payout rows ${jpRows} == jackpots shown ${jpTotal} (${jpHits} hits)`);
+    const paidUnits = Object.values(st.jp.state.tiers).reduce((a, t) => a + t.paid, 0);
+    ok(paidUnits === jpTotal * JACKPOT.U, 'pool paid == jackpots credited to players');
+    ok(st.jp.hits.length === jpHits, 'every hit recorded');
+    const r = await PLAY.handle(st, 'a', { op: 'state' });
+    ok(r.jackpot && r.jpHits.length === Math.min(12, jpHits), 'state carries the meters and recent hits');
+    const fr = await PLAY.handle(st, 'a', { op: 'pool' });
+    ok(fr.jackpot.tiers.find(t => t.id === 'mini').commit === st.jp.state.tiers.mini.commit, 'the published commitment is the live one');
+    report(`2 players, 6000 spins on one pool with racing writers: ${jpHits} jackpots (${jpTotal.toLocaleString()} chips) ledgered exactly; no drop point ever sent`, f);
+  }
+  {
+    // Free spins don't contribute; the jackpot's own RNG never changes the reels; hard rule 2.
+    const f = fail;
+    async function run(xp, chips, withPool) {
+      const st = memStore({ jackpot: withPool });
+      await PLAY.handle(st, 'u', { op: 'state' });
+      const w = st.wallets.get('u');
+      await st.commit('u', w.version, { chips, vault: 0, econ: Object.assign(w.econ, { xp }), ledger: chips !== w.chips ? [{ account: 'chips', amount: chips - w.chips, kind: 'quests' }] : [] });
+      const ri = seededInt(31), jri = seededInt(32), out = [];
+      let seq = 0, freeContrib = false;
+      for (let i = 0; i < 1500; i++) {
+        const before = st.jp.state ? Object.values(st.jp.state.tiers).reduce((a, t) => a + t.contributed, 0) : 0;
+        const wasFree = !!(st.tables.get('u/slot_lantern') || {}).free;
+        const r = await PLAY.handle(st, 'u', { op: 'deal', table: 'slot_lantern', seq, level: 2 }, { randInt: ri, jpRandInt: jri });
+        seq = r.view.seq;
+        const after = st.jp.state ? Object.values(st.jp.state.tiers).reduce((a, t) => a + t.contributed, 0) : 0;
+        if (wasFree && after !== before) freeContrib = true;
+        out.push(r.view.last.stops.join(',') + ':' + r.view.last.win + ':' + r.view.last.jackpotWin);
+        const w2 = st.wallets.get('u');
+        if (w2.chips < 500) await st.commit('u', w2.version, { chips: w2.chips + 5000, vault: 0, econ: w2.econ, ledger: [{ account: 'chips', amount: 5000, kind: 'quests' }] });
+      }
+      return { out, freeContrib };
+    }
+    const a = await run(0, 1000, true), b = await run(500000, 200000, true), c = await run(0, 1000, false);
+    ok(!a.freeContrib, 'a free spin contributed to the pool');
+    ok(a.out.every((x, i) => x === b.out[i]), 'Lv1 with 1,000 and Diamond with 200,000 got different spins or jackpots');
+    ok(a.out.every((x, i) => x.split(':').slice(0, 2).join(':') === c.out[i].split(':').slice(0, 2).join(':')), 'the jackpot changed the reels');
+    report('free spins contribute nothing; reels identical with or without the pool; Lv1 vs Diamond identical incl. jackpots (hard rule 2)', f);
   }
 
   section('the deal is indifferent to who you are (hard rule 2)');

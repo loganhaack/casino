@@ -25,6 +25,9 @@
  *   - slots online: every spin is decided and paid by the server; the page's
  *     bankroll and display match it; free spins resume from the server after
  *     a reload; browser chips untouched
+ *   - linked jackpots: the page shows the server's meters, a jackpot hit is
+ *     paid through the ledger and celebrated, another player's hit is picked
+ *     up, and no response ever carries a drop point
  *   - signing out returns to offline play
  */
 'use strict';
@@ -95,13 +98,13 @@ function loadPage(net, storage) {
       addEventListener: () => {}, body: makeEl('body'),
     },
     BJ, ECON: require('./economy.js'), TABLE_RULES: require('./tables.js'), TCP: require('./tcp-core.js'),
-    SLOTS: require('./slots-core.js'), SLOT_ART: require('./slots-art.js'),
+    SLOTS: require('./slots-core.js'), SLOT_ART: require('./slots-art.js'), JACKPOT: require('./jackpot.js'),
   };
   sandbox.globalThis = sandbox;
   sandbox.window = sandbox;
   vm.createContext(sandbox);
   vm.runInContext(script + `
-;globalThis.__h = { getS: () => S, getON: () => ON, online, TS, bankroll, showGame, bjDeal, bjAct, onToggle, onRescue,
+;globalThis.__h = { el: (id) => document.getElementById(id), getS: () => S, getON: () => ON, online, TS, bankroll, showGame, bjDeal, bjAct, onToggle, onRescue,
   acctSignOut, econClaimQuest, econClaimAll, econVault, econBuy, econEquip, econSpinClick, econUnclaimed, E,
   TCPS, onTcpDeal, onTcpAct, deal, resolve, getPhase: () => phase,
   SLS, slotST, slotPick, onSlotSpin, slotSpin, setAnimUntil: (v) => { animUntil = v; },
@@ -109,7 +112,7 @@ function loadPage(net, storage) {
   return { H: sandbox.__h, el: id => sandbox.document.getElementById(id) };
 }
 
-function newNet() { return { store: memStore(), calls: 0, responses: [], down: 0, dropReply: 0 }; }
+function newNet() { return { store: memStore({ jackpot: true }), calls: 0, responses: [], down: 0, dropReply: 0 }; }
 function signedInStorage() {
   return new Map([['casino.auth.v1', JSON.stringify({ access_token: 'tok', refresh_token: 'r',
     expires_at: Math.floor(Date.now() / 1000) + 86400, user: { id: USER, email: 'p@example.com' } })]]);
@@ -343,6 +346,43 @@ setTimeout(() => { console.log('\nFAIL: timed out (a round never finished?)'); p
     while (P2.H.slotST().free) await P2.H.onSlotSpin();
     P = P2;
     report(`${spins} online spins (${frees} free) on 3 machines: page == server every spin; feature survives a reload; browser untouched`, f);
+  }
+
+  console.log('\nlinked jackpots');
+  {
+    const f = fail, JACKPOT = require('./jackpot.js');
+    P.H.showGame('slots');
+    P.H.slotPick('gilded');
+    const st = P.H.slotST();
+    st.level = 25;
+    // Make sure the pool exists, then set the Mini to drop on the next paid spin.
+    await P.H.onSlotSpin();
+    while (st.free) await P.H.onSlotSpin();
+    const pool = net.store.jp.state;
+    ok(pool && P.H.getON().jackpot && P.H.getON().jackpot.tiers.length === 4, 'page has the server\'s meters');
+    pool.tiers.mini.hp = pool.tiers.mini.meter + 1;
+    const commit = pool.tiers.mini.commit = await JACKPOT.sha256Hex(JACKPOT.commitText('mini', pool.tiers.mini.hp, pool.tiers.mini.salt));
+    const before = net.store.wallets.get(USER).chips, rows0 = net.store.ledger.length;
+    await P.H.onSlotSpin();
+    const last = st.last, jpRows = net.store.ledger.slice(rows0).filter(x => /^jp:mini/.test(x.ref || ''));
+    ok(jpRows.length === 1, 'the Mini dropped on that spin and was paid by a jp: ledger row');
+    const res = net.responses[net.responses.length - 1].view.last;
+    ok(res.jackpots.length >= 1 && res.jackpots[0].tier === 'mini' && res.jackpots[0].reveal.commit === commit, 'the spin carries the hit with its reveal');
+    ok(P.H.el('bigHit').hidden === false && /Mini jackpot/i.test(P.H.el('bhTitle').textContent), 'the jackpot popup is up');
+    const after = net.store.wallets.get(USER).chips;
+    ok(after - before === res.win + res.jackpotWin - res.cost && P.H.bankroll() === after && after === net.store.ledgerSum(USER), 'page == server == ledger with the jackpot');
+    ok(st.stats.jackpots >= 1, 'page stats count the jackpot');
+    ok(!JACKPOT.auditError(net.store.jp.state), 'pool audit after the hit');
+    // Another player's hit shows up on the next reply.
+    net.store.jp.hits.push({ at: new Date(Date.now() + 5).toISOString(), user_id: 'someone-else', tier: 'major', amount: 6123, table_id: 'slot_lantern', name: 'Sam', reveal: null });
+    await P.H.onSlotSpin();
+    const seen = P.H.getON().jpHits.find(x => x.name === 'Sam');
+    ok(seen && seen.mine === false && !('user_id' in seen), 'another player\'s hit arrives, by name, never by user id');
+    ok(P.H.getON().jpHits.some(x => x.mine && x.tier === 'mini'), 'your own hit is marked as yours');
+    const leak = net.responses.some(r => /"hp"\s*:\s*\d+,\s*"salt"/.test(JSON.stringify(r.jackpot || {})));
+    ok(!leak, 'a meters view carried a live drop point');
+    while (st.free) await P.H.onSlotSpin();
+    report('meters from the server; a Mini drop is ledgered, celebrated and counted; other players\' hits arrive by name; no drop point leaks', f);
   }
 
   console.log('\nreload mid-round');

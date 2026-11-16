@@ -16,6 +16,12 @@
  * exactly the sum of its ledger rows, and throw {code: '40001'} if the
  * wallet version is stale.
  *
+ * Linked jackpots (jackpot.js) are one pool shared by every player. If the
+ * store has it (store.pool), every paid slot spin contributes and may hit,
+ * and the pool commits in the SAME write as the player's wallet, under its
+ * own version (a racing writer -> 40001 -> retry). A store without it (the
+ * jackpot migration not applied yet) just plays slots without jackpots.
+ *
  * What the player is sent: their balance, rank and economy state (quests,
  * vault, wheels, cosmetics: none of it secret), and each table's round with
  * the dealer's hole card (Three Card Poker: all three dealer cards) hidden
@@ -31,11 +37,12 @@
       require('../_shared/economy.js'),
       require('../_shared/tables.js'),
       require('../_shared/tcp-core.js'),
-      require('../_shared/slots-core.js'));
+      require('../_shared/slots-core.js'),
+      require('../_shared/jackpot.js'));
   } else {
-    root.PLAY = factory(root.BJ, root.ECON, root.TABLE_RULES, root.TCP, root.SLOTS);
+    root.PLAY = factory(root.BJ, root.ECON, root.TABLE_RULES, root.TCP, root.SLOTS, root.JACKPOT);
   }
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (BJ, ECON, TABLE_RULES, TCP, SLOTS) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (BJ, ECON, TABLE_RULES, TCP, SLOTS, JACKPOT) {
   'use strict';
 
   /** Online tables. Same rules objects the page builds (BJ_TABLES). */
@@ -51,8 +58,9 @@
   const SIDE_KEYS = Object.keys(BJ.SIDE_BETS);
   const ACTIONS = ['insure', 'decline', 'hit', 'stand', 'double', 'split'];
   const TCP_ACTIONS = ['play', 'fold'];
-  const OPS = ['state', 'deal', 'act', 'claim', 'claimAll', 'spin', 'rescue', 'vault', 'buy', 'equip'];
-  const MAX_RETRIES = 4;
+  const OPS = ['state', 'pool', 'deal', 'act', 'claim', 'claimAll', 'spin', 'rescue', 'vault', 'buy', 'equip'];
+  const MAX_RETRIES = 8;   // the jackpot pool is shared, so conflicts are likelier than with one wallet
+  const RECENT_HITS = 12;
 
   /** An error the player caused (bad bet, stale click). Sent back as-is. */
   class PlayError extends Error {
@@ -260,7 +268,7 @@
 
   // One request = one spin, decided and paid by SLOTS.play(). The table keeps
   // only the free-spins feature (if one is running) and the last result.
-  function slotDeal(turn, t, req, randInt) {
+  async function slotDeal(turn, t, req, randInt, jpRandInt) {
     const m = SLOTS.MACHINES[t.slice(5)], ts = turn.ts, a = turn.acct;
     const free = ts.free || null;
     const level = free ? free.level : req.level;
@@ -280,6 +288,23 @@
     if (res.win) {
       a.rows.push({ account: 'chips', amount: res.win, kind: 'payout', table_id: t, ref: turn.ref });
       a.chips += res.win;
+    }
+    // Linked jackpots: paid spins only. Their own RNG stream, so the reels
+    // are the same whether or not the pool exists.
+    res.jackpots = [];
+    res.jackpotWin = 0;
+    if (turn.pool && res.cost) {
+      const hits = await JACKPOT.play(turn.pool.state, res.cost, jpRandInt);
+      turn.poolChanged = true;
+      for (const h of hits) {
+        if (h.amount > 0) {
+          a.rows.push({ account: 'chips', amount: h.amount, kind: 'payout', table_id: t, ref: `jp:${h.tier}:${turn.pool.state.hits}` });
+          a.chips += h.amount;
+        }
+        res.jackpots.push(h);
+        res.jackpotWin += h.amount;
+        turn.hits.push({ tier: h.tier, amount: h.amount, table_id: t, reveal: h.reveal || null });
+      }
     }
     ts.free = res.free;
     ts.last = res;
@@ -387,6 +412,9 @@
     if (!OPS.includes(req.op)) return fail('bad_request', 'Unknown op.');
     const game = req.op === 'deal' || req.op === 'act';
     if (game && !TABLE_IDS.includes(req.table)) return fail('bad_request', 'Unknown table.');
+    const jpRandInt = (opts && opts.jpRandInt) || BJ.cryptoRandInt;
+    // Jackpot meters only: no wallet, no write.
+    if (req.op === 'pool') return Object.assign({ ok: true }, await poolOut(store, null, userId));
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       let w = await store.wallet(userId);
@@ -395,7 +423,7 @@
       const econ = ECON.normalizeEcon(clone(w.econ || {}), TABLE_RULES.startingChips);
       econ.vault.balance = w.vault;   // the column is the truth; econ carries the vault's day tracking
       const acct = { chips: w.chips, econ, rows: [] };
-      const turn = { acct, now, ev: [], extra: {}, ts: null, ref: null, shuffled: false };
+      const turn = { acct, now, ev: [], extra: {}, ts: null, ref: null, shuffled: false, pool: null, poolChanged: false, hits: [] };
       const econBefore = JSON.stringify(econ);
 
       // Every request keeps the day current: yesterday's unclaimed quests are
@@ -410,7 +438,11 @@
           if (req.seq !== turn.ts.seq) refuse('stale', 'The table changed (another tab or a double click). Showing the current state.');
           if (isSlot(t)) {
             if (req.op !== 'deal') refuse('bad_request', 'Slot machines only spin.');
-            slotDeal(turn, t, req, randInt);
+            if (store.pool) {
+              turn.pool = await store.pool();             // null: no jackpot table yet
+              if (turn.pool && !turn.pool.state) turn.pool.state = await JACKPOT.blankPool(jpRandInt);
+            }
+            await slotDeal(turn, t, req, randInt, jpRandInt);
           } else if (t === 'tcp') {
             if (req.op === 'deal') tcpDeal(turn, req, randInt);
             else tcpAct(turn, req);
@@ -436,6 +468,8 @@
           await store.commit(userId, w.version, {
             chips: acct.chips, vault: econ.vault.balance, econ, ledger: acct.rows,
             tableId: t, tableState: game ? turn.ts : undefined,
+            pool: turn.poolChanged ? { version: turn.pool.version, state: turn.pool.state } : undefined,
+            hits: turn.hits,
           });
         } catch (e) {
           if (e && e.code === '40001') continue;   // someone else committed first; start over
@@ -444,6 +478,7 @@
       }
 
       const out = Object.assign({ ok: true, wallet: walletView(acct), events: turn.ev }, turn.extra);
+      if (req.op === 'state' || (game && isSlot(t))) Object.assign(out, await poolOut(store, turn.poolChanged ? turn.pool.state : null, userId));
       if (req.op === 'state') {
         out.tables = {};
         for (const k of TABLE_IDS) out.tables[k] = tableView((await store.table(userId, k)) || emptyTable(), acct.chips, k);
@@ -455,6 +490,29 @@
   }
 
   function fail(error, message) { return { ok: false, error, message }; }
+
+  /** The jackpot meters and recent hits, for the page. { jackpot: null } when there is no pool. */
+  async function poolOut(store, fresh, userId) {
+    if (!store.pool) return { jackpot: null, jpHits: [] };
+    let state = fresh;
+    if (!state) {
+      const p = await store.pool();
+      if (!p) return { jackpot: null, jpHits: [] };   // no jackpot table: feature off
+      state = p.state;
+    }
+    let v;
+    if (state) v = JACKPOT.view(state);
+    else {
+      // The pool is created by the first paid spin; until then show the seeds,
+      // with no commitment (there is no drop point yet to commit to).
+      v = JACKPOT.view(await JACKPOT.blankPool(() => 0));
+      for (const t of v.tiers) if (t.commit) t.commit = null;
+    }
+    // Recent hits name the winner by display name; "mine" marks the caller's own. Never a user id.
+    const hits = store.recentHits ? await store.recentHits(RECENT_HITS) : [];
+    return { jackpot: v, jpHits: hits.map(({ user_id, ...h }) => Object.assign(h, { mine: user_id === userId })) };
+  }
+
 
   return { handle, TABLES, TABLE_IDS, SLOT_TABLES, roundView, tcpRoundView, tableView, rankOf, PlayError };
 });
