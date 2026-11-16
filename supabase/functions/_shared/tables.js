@@ -48,6 +48,9 @@
 
     bjMinBet: 10,
     bjBetStep: 10,
+
+    // Opening balance: offline (a new save) and online (a new server wallet).
+    startingChips: 1000,
   };
 
   if (typeof module === 'object' && module.exports) module.exports = TABLE_RULES;

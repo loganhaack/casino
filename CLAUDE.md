@@ -25,6 +25,7 @@ node test-blackjack-payouts.js # real page code: chip accounting, house edge, de
 node test-economy.js           # wheels, quests, events, ledger, "deal is indifferent to who you are", ~30s
 node sync-shared.js            # copy blackjack-core/tables/economy into supabase/functions/_shared/
 node sync-shared.js --check    # fails if the server's copies drift from the root files
+node test-server.js            # online table server vs in-memory commit_turn: ledger, no leaks, same game, ~30s
 open index.html                # the game; no build step, no server, no deps
 ```
 
@@ -192,6 +193,17 @@ economy section only applies those rules.
   `blackjack-core.js`, `tables.js` and `economy.js`. Those are byte-identical
   copies made by `sync-shared.js`; never edit them. Edit the root file, re-sync,
   and run `--check` before any deploy (the eval3() drift rule, server edition).
+- **Online server** is the `play` Edge Function. `logic.js` is all of its
+  logic (plain JS, runs the shared files, tested by `test-server.js`);
+  `index.ts` only verifies the sign-in and talks to Postgres. The player is
+  sent their round with the hole card hidden until it's over, and never the
+  shoe. Each table has a `seq`; requests carry the seq they clicked on, so a
+  double click can't bet twice. Deploy:
+  `npx supabase functions deploy play --project-ref kavaswxswtkvguzdljyi --use-api --no-verify-jwt`
+  (the function checks the token itself). Run `test-server.js` first.
+- Online so far: blackjack + Free Bet, base XP / table limits. Quests,
+  promos, Double XP, wheels, vault, shop are not online yet: events run on
+  the player's local clock and the server is UTC, which needs deciding first.
 - Step 1 (done): profiles only (name, avatar). Chips still live in the browser.
   Step 2: balances + ledger + dealing move into Edge Functions together. A
   balance column the browser can write is a balance anyone can edit.
