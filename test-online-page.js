@@ -22,6 +22,9 @@
  *   - Three Card Poker online: the page never holds the dealer's cards
  *     before the hand ends; page and server agree every hand; a reload
  *     mid-hand resumes it; offline poker still uses browser chips
+ *   - slots online: every spin is decided and paid by the server; the page's
+ *     bankroll and display match it; free spins resume from the server after
+ *     a reload; browser chips untouched
  *   - signing out returns to offline play
  */
 'use strict';
@@ -92,6 +95,7 @@ function loadPage(net, storage) {
       addEventListener: () => {}, body: makeEl('body'),
     },
     BJ, ECON: require('./economy.js'), TABLE_RULES: require('./tables.js'), TCP: require('./tcp-core.js'),
+    SLOTS: require('./slots-core.js'), SLOT_ART: require('./slots-art.js'),
   };
   sandbox.globalThis = sandbox;
   sandbox.window = sandbox;
@@ -100,6 +104,7 @@ function loadPage(net, storage) {
 ;globalThis.__h = { getS: () => S, getON: () => ON, online, TS, bankroll, showGame, bjDeal, bjAct, onToggle, onRescue,
   acctSignOut, econClaimQuest, econClaimAll, econVault, econBuy, econEquip, econSpinClick, econUnclaimed, E,
   TCPS, onTcpDeal, onTcpAct, deal, resolve, getPhase: () => phase,
+  SLS, slotST, slotPick, onSlotSpin, slotSpin, setAnimUntil: (v) => { animUntil = v; },
   get bjTable() { return bjTable; } };`, sandbox, { filename: 'index.html:script' });
   return { H: sandbox.__h, el: id => sandbox.document.getElementById(id) };
 }
@@ -287,6 +292,57 @@ setTimeout(() => { console.log('\nFAIL: timed out (a round never finished?)'); p
     P.H.onToggle();
     ok(P.H.online() && P.H.bankroll() === net.store.wallets.get(USER).chips, 'back online: server chips intact');
     report(`${N} online hands: page and server agree every hand, dealer never in the page early; reload resumes; offline poker unaffected`, f);
+  }
+
+  console.log('\nslots online');
+  {
+    const f = fail, SLOTS = require('./slots-core.js');
+    const S0 = P.H.getS().chips, L0 = JSON.stringify(P.H.getS().econ.ledger), offSlots = JSON.stringify(P.H.getS().slots.m);
+    P.H.showGame('slots');
+    ok(P.H.SLS() === P.H.getON().slots, 'slots use the online state');
+    let spins = 0, frees = 0;
+    for (const id of SLOTS.MACHINE_IDS) {
+      P.H.slotPick(id);
+      const st = P.H.slotST(), m = SLOTS.MACHINES[id];
+      st.level = m.kind === 'classic' ? 5 : 1;
+      for (let i = 0; i < 150 || st.free; i++) {
+        const w = net.store.wallets.get(USER);
+        if (w.chips < 300) await net.store.commit(USER, w.version, { chips: w.chips + 2000, vault: 0, econ: w.econ, ledger: [{ account: 'chips', amount: 2000, kind: 'quests' }] });
+        const before = net.store.wallets.get(USER).chips, rows0 = net.store.ledger.length, wasFree = !!st.free;
+        await P.H.onSlotSpin();
+        spins++; if (wasFree) frees++;
+        const after = net.store.wallets.get(USER).chips, last = st.last;
+        const extra = net.store.ledger.slice(rows0).filter(x => x.account === 'chips' && x.kind !== 'bet' && x.kind !== 'payout').reduce((a, x) => a + x.amount, 0);
+        ok(last && after - before === last.win - last.cost + extra, `${id}: server moved ${after - before}, page shows ${last && last.win - last.cost} + ${extra}`);
+        ok(P.H.bankroll() === after && after === net.store.ledgerSum(USER), 'page bankroll == server == ledger');
+        ok(!wasFree || last.cost === 0, 'free spin charged');
+        if (i > 2000) break;
+      }
+    }
+    // (Free spins online are checked below: that loop spins until a feature triggers.)
+    ok(P.H.getS().chips === S0 && JSON.stringify(P.H.getS().econ.ledger) === L0 && JSON.stringify(P.H.getS().slots.m) === offSlots,
+      'browser chips, ledger and offline slots untouched');
+
+    // Reload in the middle of a feature: the server has it.
+    P.H.slotPick('galleon');
+    const st = P.H.slotST();
+    for (let g = 0; !st.free && g < 5000; g++) {
+      const w = net.store.wallets.get(USER);
+      if (w.chips < 300) await net.store.commit(USER, w.version, { chips: w.chips + 2000, vault: 0, econ: w.econ, ledger: [{ account: 'chips', amount: 2000, kind: 'quests' }] });
+      await P.H.onSlotSpin();
+    }
+    ok(!!st.free, 'triggered free spins online');
+    const feature = JSON.stringify(st.free);
+    const P2 = loadPage(net, storage);
+    await tick();
+    P2.H.showGame('slots');
+    ok(P2.H.SLS().machine === 'galleon' && JSON.stringify(P2.H.slotST().free) === feature, 'reloaded page has the same feature, from the server');
+    const c0 = net.store.wallets.get(USER).chips;
+    await P2.H.onSlotSpin();
+    ok(P2.H.slotST().last.cost === 0 && net.store.wallets.get(USER).chips >= c0, 'resumed free spin played free');
+    while (P2.H.slotST().free) await P2.H.onSlotSpin();
+    P = P2;
+    report(`${spins} online spins (${frees} free) on 3 machines: page == server every spin; feature survives a reload; browser untouched`, f);
   }
 
   console.log('\nreload mid-round');

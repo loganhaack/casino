@@ -69,6 +69,8 @@ sandbox.BJ = require('./blackjack-core.js');
 sandbox.ECON = require('./economy.js');
 sandbox.TABLE_RULES = require('./tables.js');
 sandbox.TCP = require('./tcp-core.js');
+sandbox.SLOTS = require('./slots-core.js');
+sandbox.SLOT_ART = require('./slots-art.js');
 sandbox.globalThis = sandbox;
 
 // ---------------------------------------------------------------------------

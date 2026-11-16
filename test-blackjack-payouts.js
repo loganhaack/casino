@@ -85,6 +85,7 @@ const sandbox = {
   ECON: require('./economy.js'),
   TABLE_RULES: require('./tables.js'),   // index.html gets this from <script src="tables.js">
   TCP: require('./tcp-core.js'),         // index.html gets this from <script src="tcp-core.js">
+  SLOTS: require('./slots-core.js'), SLOT_ART: require('./slots-art.js'),
 };
 sandbox.globalThis = sandbox;
 

@@ -1,0 +1,62 @@
+{
+  "generated": "2026-11-16T21:02:48.087Z",
+  "machines": {
+    "gilded": {
+      "name": "Gilded Sevens",
+      "kind": "classic",
+      "combinations": 10648,
+      "weightedTotal": 262144,
+      "rtp": 0.93035888671875,
+      "baseReturn": 0.93035888671875,
+      "featureReturn": 0,
+      "featureChance": 0,
+      "spinsPerFeature": 0,
+      "hitFrequency": 0.2911338806152344,
+      "sdBase": 4.282082417148811,
+      "suggestedPar": {
+        "rtp": 0.93035889,
+        "hit": 0.29113388,
+        "feature": 0,
+        "sd": 4.282082
+      }
+    },
+    "galleon": {
+      "name": "Sunken Galleon",
+      "kind": "lines",
+      "combinations": 318622500,
+      "weightedTotal": 318622500,
+      "rtp": 0.9495917687333011,
+      "baseReturn": 0.7430427574951546,
+      "featureReturn": 0.20654901123814656,
+      "featureChance": 0.007066789068568604,
+      "spinsPerFeature": 13.111909155453915,
+      "hitFrequency": 0.44408372290092507,
+      "sdBase": 1.497263413286647,
+      "suggestedPar": {
+        "rtp": 0.94959177,
+        "hit": 0.44408372,
+        "feature": 0.00706679,
+        "sd": 1.497263
+      }
+    },
+    "lantern": {
+      "name": "Lantern Festival",
+      "kind": "ways",
+      "combinations": 425350016,
+      "weightedTotal": 425350016,
+      "rtp": 0.9465319028131405,
+      "baseReturn": 0.7120507500345314,
+      "featureReturn": 0.23448115277860898,
+      "featureChance": 0.006179118140670295,
+      "spinsPerFeature": 10.658607979184735,
+      "hitFrequency": 0.43808656633505333,
+      "sdBase": 1.5081133791064354,
+      "suggestedPar": {
+        "rtp": 0.9465319,
+        "hit": 0.43808657,
+        "feature": 0.00617912,
+        "sd": 1.508113
+      }
+    }
+  }
+}

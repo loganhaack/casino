@@ -6,8 +6,8 @@ Context for Claude Code working in this repo.
 
 A play-chip casino game (no real money, ever) built so that its odds are
 verifiable rather than trusted. Three Card Poker, Blackjack and Free Bet
-Blackjack (with 21+3 and Perfect Pairs side bets) are done, along with the
-economy (`economy.js`). Supabase (accounts) and slots are planned.
+Blackjack (with 21+3 and Perfect Pairs side bets), three slot machines, the
+economy (`economy.js`) and Supabase accounts with server-side play are done.
 
 The origin of the project: social casino apps are unregulated and have every
 incentive to tune their RNG toward chip sales. The response is a game that
@@ -23,7 +23,9 @@ node test-blackjack.js         # blackjack totals + engine scenarios + fuzz, ~6s
 node enumerate-blackjack.js    # exact dealer tables vs Wizard of Odds, <1s, writes expected-blackjack.json
 node test-blackjack-payouts.js # real page code: chip accounting, house edge, dealer chi-square, ~3min
 node test-economy.js           # wheels, quests, events, ledger, "deal is indifferent to who you are", ~30s
-node sync-shared.js            # copy blackjack-core/tcp-core/tables/economy into supabase/functions/_shared/
+node enumerate-slots.js        # exact slot PAR sheets, every reel-stop combination, ~2min; fails if SLOTS.PAR drifts
+node test-slots.js             # real page code: slot chip accounting, RTP within 4 SE, free spins + reload, ~3min
+node sync-shared.js            # copy blackjack-core/tcp-core/slots-core/tables/economy into supabase/functions/_shared/
 node sync-shared.js --check    # fails if the server's copies drift from the root files
 node test-server.js            # online table server vs in-memory commit_turn: ledger, no leaks, same game, ~30s
 node test-online-page.js       # real page code playing online against the real server logic, ~10s
@@ -39,8 +41,8 @@ enough that there is no excuse to skip them.
 The enumerators must validate the exact code that deals the game. Each game's
 logic lives in ONE classic-script file that the page (`<script src>`), the
 enumerator, the harnesses and the server all load: `tcp-core.js` (`eval3()`,
-`categorize6()`, deal, `settle()`) and `blackjack-core.js`. Paytables live in
-`tables.js`. **Never copy any of it into `index.html` or `enumerate.js`.** A
+`categorize6()`, deal, `settle()`), `blackjack-core.js` and `slots-core.js`
+(reel strips, paytables, spin, pay). Table-game paytables live in `tables.js`. **Never copy any of it into `index.html` or `enumerate.js`.** A
 copy that drifts means the enumerator is validating a different game than the
 one being played, and the whole verification story is theater. (`eval3()`
 used to be duplicated in both files and kept in sync by hand; it no longer is.)
@@ -204,7 +206,7 @@ weekly event calendar, daily quests, and the cosmetics shop.
   then explicit column grants and policies. Verify from outside with the
   publishable key that anonymous reads/writes get `42501`.
 - Edge Functions load `supabase/functions/_shared/` copies of
-  `blackjack-core.js`, `tcp-core.js`, `tables.js` and `economy.js`. Those are byte-identical
+  `blackjack-core.js`, `tcp-core.js`, `slots-core.js`, `tables.js` and `economy.js`. Those are byte-identical
   copies made by `sync-shared.js`; never edit them. Edit the root file, re-sync,
   and run `--check` before any deploy (the eval3() drift rule, server edition).
 - **Online server** is the `play` Edge Function. `logic.js` is all of its
@@ -228,18 +230,45 @@ weekly event calendar, daily quests, and the cosmetics shop.
   the dealer's three cards are null in the page until the hand is over. An
   Online/Offline button under the chips switches. Display stats/bets persist
   under `casino.online.v1`.
-- Online: every game (Blackjack, Free Bet, Three Card Poker), XP (incl.
+- Online: every game (Blackjack, Free Bet, Three Card Poker, slots), XP (incl.
   Double XP), quests + claiming, event promos, both wheels, vault + interest,
   shop + equip. Every server request first catches the day up
   (`ensureQuests`, `accrueVault`).
 - Balances, the ledger and dealing moved server-side together: a balance
   column the browser can write is a balance anyone can edit.
 
+## Slots
+
+`slots-core.js` (classic script, `SLOTS`) holds every machine as data (reel
+strips, paytables, lines, feature) plus the spin (`play()`) and the pay
+(`payOf()` / `wins()`). `slots-art.js` is presentation only: inline-SVG
+symbols drawn via one hidden sprite.
+
+- **A spin is one stop per reel, uniform over that reel's virtual stops**
+  (classic reels carry per-stop weights: the real "virtual reel"). Nothing
+  else decides it: no near-miss logic, no "due" wins, nothing about the
+  player. The anticipation slow-down in the page is drawn from the
+  already-decided result; it never changes one.
+- **`SLOTS.PAR`** (RTP, hit frequency, feature chance, base-game SD) is what
+  the page shows. `enumerate-slots.js` walks every stop combination through
+  `payOf()` and fails if PAR disagrees. Change a strip, pay or feature: run it,
+  copy its `suggestedPar` into PAR, run `test-slots.js`. Target RTP band is
+  roughly 92-96%, like real casinos; current: Gilded Sevens 93.04%, Sunken
+  Galleon 94.96%, Lantern Festival 94.65%.
+- `payOf()` must stay allocation-free (the enumerator calls it ~750M times);
+  `wins()` must always sum to it (`test-slots.js` checks).
+- Free-spin state lives with the machine (`S.slots.m[id].free` offline, the
+  `slot_<id>` table state online) so a reload can't lose a feature, and you
+  can't switch machines mid-feature. Free spins don't award XP (nothing wagered).
+- Table limit applies to the total cost of a spin. Every pay is a whole number
+  of chips by construction (`checkMachine()` rejects anything else).
+- Machines are original designs in real genres (stepper, 20-line, 243-ways).
+  Don't rename them after, or restyle them as, real branded games.
+
 ## Next up
 
 The leaderboard (HOSTING.md, Stage 2 step 4): every game now deals and
-settles on the server, which is what makes a leaderboard mean anything. Then
-slots.
+settles on the server, which is what makes a leaderboard mean anything.
 
 Edge checks in both payout harnesses fail only beyond 4 standard errors
 (about 1 run in 16,000 for a correct game). If one fails, re-run once; if it

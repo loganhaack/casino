@@ -2,11 +2,11 @@
  * Online table server: the game and economy logic, with no database and no
  * Deno in it.
  *
- * It runs the SAME blackjack-core.js / tcp-core.js / tables.js / economy.js
- * the page runs
+ * It runs the SAME blackjack-core.js / tcp-core.js / slots-core.js /
+ * tables.js / economy.js the page runs
  * (the byte-identical copies in ../_shared/, see sync-shared.js), so the
  * server deals, settles and rewards exactly as the harnesses verify. Nothing
- * here computes a payout (BJ.settle() / TCP.settle() do) or a reward (economy.js's
+ * here computes a payout (BJ.settle() / TCP.settle() / SLOTS.play() do) or a reward (economy.js's
  * ACCOUNT ACTIONS do, the same functions the page calls offline).
  *
  * It talks to storage only through a small `store` object, so Node tests can
@@ -30,11 +30,12 @@
       require('../_shared/blackjack-core.js'),
       require('../_shared/economy.js'),
       require('../_shared/tables.js'),
-      require('../_shared/tcp-core.js'));
+      require('../_shared/tcp-core.js'),
+      require('../_shared/slots-core.js'));
   } else {
-    root.PLAY = factory(root.BJ, root.ECON, root.TABLE_RULES, root.TCP);
+    root.PLAY = factory(root.BJ, root.ECON, root.TABLE_RULES, root.TCP, root.SLOTS);
   }
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (BJ, ECON, TABLE_RULES, TCP) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (BJ, ECON, TABLE_RULES, TCP, SLOTS) {
   'use strict';
 
   /** Online tables. Same rules objects the page builds (BJ_TABLES). */
@@ -42,8 +43,11 @@
     bj: BJ.makeRules(TABLE_RULES.blackjack),
     fb: BJ.makeRules(TABLE_RULES.freeBet),
   };
-  /** Every online table: the blackjack tables above, plus Three Card Poker. */
-  const TABLE_IDS = [...Object.keys(TABLES), 'tcp'];
+  /** Slot machines: one table each, 'slot_<machine id>'. */
+  const SLOT_TABLES = SLOTS.MACHINE_IDS.map(id => 'slot_' + id);
+  const isSlot = (t) => SLOT_TABLES.includes(t);
+  /** Every online table: the blackjack tables above, Three Card Poker, the slots. */
+  const TABLE_IDS = [...Object.keys(TABLES), 'tcp', ...SLOT_TABLES];
   const SIDE_KEYS = Object.keys(BJ.SIDE_BETS);
   const ACTIONS = ['insure', 'decline', 'hit', 'stand', 'double', 'split'];
   const TCP_ACTIONS = ['play', 'fold'];
@@ -93,6 +97,8 @@
 
   function tableView(ts, chips, t) {
     const r = ts.round;
+    // A slot table holds no secret: the next spin isn't decided until it's played.
+    if (isSlot(t)) return { seq: ts.seq, rounds: ts.n, free: ts.free || null, last: ts.last || null };
     if (t === 'tcp') {
       return {
         seq: ts.seq,
@@ -250,6 +256,38 @@
     turn.ev.push(...ECON.afterRound(a, TCP.facts(res, r.bets, TABLE_RULES.tcp.minBet), turn.now));
   }
 
+  /* ------------------------------------------------------------- slots -- */
+
+  // One request = one spin, decided and paid by SLOTS.play(). The table keeps
+  // only the free-spins feature (if one is running) and the last result.
+  function slotDeal(turn, t, req, randInt) {
+    const m = SLOTS.MACHINES[t.slice(5)], ts = turn.ts, a = turn.acct;
+    const free = ts.free || null;
+    const level = free ? free.level : req.level;
+    if (!free) {
+      const err = SLOTS.betError(m, level);
+      if (err) refuse('bad_bet', err);
+      const cost = SLOTS.totalBet(m, level), limit = rankOf(a.econ).maxBet;
+      if (cost > limit) refuse('over_limit', `Your table limit is ${limit.toLocaleString('en-US')} per spin. Rank up to raise it.`);
+      if (a.chips < cost) refuse('not_enough_chips', 'Not enough chips for this bet.');
+    }
+    turn.ref = `${t}:${ts.n + 1}`;
+    const res = SLOTS.play(m, level, free, randInt || BJ.cryptoRandInt);
+    if (res.cost) {
+      a.rows.push({ account: 'chips', amount: -res.cost, kind: 'bet', table_id: t, ref: turn.ref });
+      a.chips -= res.cost;
+    }
+    if (res.win) {
+      a.rows.push({ account: 'chips', amount: res.win, kind: 'payout', table_id: t, ref: turn.ref });
+      a.chips += res.win;
+    }
+    ts.free = res.free;
+    ts.last = res;
+    ts.n++;
+    // Paid spins only, after the result: XP, quests. Can't touch the spin.
+    if (res.cost) turn.ev.push(...ECON.afterRound(a, SLOTS.facts(res, m), turn.now));
+  }
+
   /* ------------------------------------------------------------ economy -- */
 
   /** Chips currently in play at any table (they count against "broke"). */
@@ -327,6 +365,7 @@
    *   { op: 'act',  table, seq, action: 'hit'|'stand'|'double'|'split'|'insure'|'decline' }
    *   { op: 'deal', table: 'tcp', seq, bets: { ante, pp, scb } }
    *   { op: 'act',  table: 'tcp', seq, action: 'play'|'fold' }
+   *   { op: 'deal', table: 'slot_<machine>', seq, level }   (one spin; during free spins level is ignored)
    *   { op: 'claim', i, day }        { op: 'claimAll' }
    *   { op: 'spin', wheel: 'bonus'|'rescue' }   ({ op: 'rescue' } = spin rescue)
    *   { op: 'vault', amount }        (+ deposit, - withdraw)
@@ -369,7 +408,10 @@
         if (game) {
           turn.ts = (await store.table(userId, t)) || emptyTable();
           if (req.seq !== turn.ts.seq) refuse('stale', 'The table changed (another tab or a double click). Showing the current state.');
-          if (t === 'tcp') {
+          if (isSlot(t)) {
+            if (req.op !== 'deal') refuse('bad_request', 'Slot machines only spin.');
+            slotDeal(turn, t, req, randInt);
+          } else if (t === 'tcp') {
             if (req.op === 'deal') tcpDeal(turn, req, randInt);
             else tcpAct(turn, req);
           } else if (req.op === 'deal') deal(turn, t, req, randInt);
@@ -414,5 +456,5 @@
 
   function fail(error, message) { return { ok: false, error, message }; }
 
-  return { handle, TABLES, TABLE_IDS, roundView, tcpRoundView, tableView, rankOf, PlayError };
+  return { handle, TABLES, TABLE_IDS, SLOT_TABLES, roundView, tcpRoundView, tableView, rankOf, PlayError };
 });

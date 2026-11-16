@@ -17,6 +17,7 @@
 
 import '../_shared/blackjack-core.js';
 import '../_shared/tcp-core.js';
+import '../_shared/slots-core.js';
 import '../_shared/tables.js';
 import '../_shared/economy.js';
 import './logic.js';

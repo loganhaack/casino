@@ -196,7 +196,9 @@ through saving (the vault), not handouts. Never through odds.
 - [ ] Profiles (with Supabase): display name, avatar, equipped cosmetics
       visible to friends. Gives the shop more to sell for chips (avatars,
       frames). Cosmetic only, never anything that affects play.
-- [ ] Slots — code is easy, the PAR sheet is the hard part. Save it for last.
+- [x] Slots: three machines (classic 3-reel, 20-line, 243-ways) with exact
+      PAR sheets by complete enumeration (`enumerate-slots.js`), published
+      reel strips, free spins, online and offline.
 
 ## Extending it
 

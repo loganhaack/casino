@@ -28,6 +28,7 @@ const BJ = require('./blackjack-core.js');
 const TABLE_RULES = require('./tables.js');
 const PLAY = require('./supabase/functions/play/logic.js');
 const TCP = require('./tcp-core.js');
+const SLOTS = require('./slots-core.js');
 
 const ROUNDS = parseInt(process.argv[2], 10) || 20000;
 let pass = 0, fail = 0;
@@ -644,6 +645,90 @@ async function main() {
     ok(lv1.every((x, i) => x === direct[i]), 'server hands identical to TCP.dealHand + TCP.settle driven directly');
     ok(lv1.every((x, i) => x === diamond[i]), 'Lv1 with 1,000 and Diamond with 200,000 got different hands');
     report('300 hands: same cards and nets as the page\'s code path; Lv1 vs Diamond identical (hard rule 2)', f);
+  }
+
+  section('slots');
+  {
+    const f = fail, st = memStore();
+    await PLAY.handle(st, 'u', { op: 'state' });
+    const spin = (t, o) => PLAY.handle(st, 'u', Object.assign({ op: 'deal', table: t, seq: 0, level: 5 }, o || {}));
+    const cases = [
+      ['slot_gilded', { level: 7 }, 'bad_bet'], ['slot_gilded', { level: 0 }, 'bad_bet'], ['slot_gilded', { level: '5' }, 'bad_bet'],
+      ['slot_galleon', { level: 1.5 }, 'bad_bet'], ['slot_galleon', { level: 26 }, 'over_limit'],   // 26 x 20 lines = 520 > 500
+      ['slot_lantern', { level: 21 }, 'over_limit'], ['slot_nope', {}, 'bad_request'],
+      ['slot_gilded', { op: 'act', action: 'hit' }, 'bad_request'], ['slot_gilded', { seq: 4 }, 'stale'],
+    ];
+    for (const [t, o, code] of cases) {
+      const r = await spin(t, o);
+      ok(!r.ok && r.error === code, `${t} ${JSON.stringify(o)} should be ${code}, got ${r.error}`);
+    }
+    ok(st.ledger.length === 1 && st.wallets.get('u').chips === 1000, 'refused spins wrote nothing');
+    const s0 = await PLAY.handle(st, 'u', { op: 'state' });
+    ok(SLOTS.MACHINE_IDS.every(id => s0.tables['slot_' + id] && s0.tables['slot_' + id].seq === 0), 'state lists every machine');
+    report('bad levels, table limit per spin, unknown machine, no actions, stale seq', f);
+  }
+  {
+    const f = fail, st = memStore(), randInt = seededInt(9001);
+    await PLAY.handle(st, 'p', { op: 'state' });
+    const N = Math.max(3000, ROUNDS >> 1);
+    let net = 0, freeSeen = 0, paid = 0;
+    const seq = {};
+    for (const id of SLOTS.MACHINE_IDS) seq[id] = 0;
+    for (let i = 0; i < N; i++) {
+      const id = SLOTS.MACHINE_IDS[i % 3], t = 'slot_' + id, m = SLOTS.MACHINES[id];
+      const w = st.wallets.get('p');
+      if (w.chips < 600) await st.commit('p', w.version, { chips: w.chips + 5000, vault: 0, econ: w.econ, ledger: [{ account: 'chips', amount: 5000, kind: 'quests' }] });
+      const wasFree = (st.tables.get('p/' + t) || {}).free;
+      const level = m.kind === 'classic' ? 5 * (1 + (i % 4)) : 1 + (i % 3);
+      const r = await PLAY.handle(st, 'p', { op: 'deal', table: t, seq: seq[id], level }, { randInt });
+      if (!r.ok) { ok(false, 'spin refused: ' + r.message); break; }
+      seq[id] = r.view.seq;
+      const res = r.view.last;
+      if (wasFree) { freeSeen++; ok(res.cost === 0 && res.mult === m.free.mult, 'free spin charged or lost its multiplier'); }
+      else { paid++; ok(res.cost === SLOTS.totalBet(m, level), 'paid spin cost'); }
+      ok(res.win === SLOTS.payOf(m, Int8Array.from(res.grid)) * (wasFree ? wasFree.level : level) * res.mult, 'server win == payOf x bet x mult');
+      net += res.win - res.cost;
+      const wc = st.wallets.get('p').chips;
+      ok(wc === st.ledgerSum('p'), 'chips == sum(ledger)');
+      const grants = st.ledger.filter(x => x.user === 'p' && x.account === 'chips' && !['opening', 'bet', 'payout'].includes(x.kind)).reduce((a, x) => a + x.amount, 0);
+      ok(wc === TABLE_RULES.startingChips + grants + net, 'chips == opening + grants + game net');
+      if (fail - f > 20) break;
+    }
+    ok(freeSeen > 0, 'fuzz reached free spins');
+    report(`fuzz: ${N} spins (${freeSeen} free) over 3 machines: ledger identity every spin, free spins free, win == payOf`, f);
+  }
+  {
+    // Same game as the page (SLOTS.play with the same RNG), and hard rule 2.
+    const f = fail;
+    async function serverSpins(xp, chips) {
+      const st = memStore();
+      await PLAY.handle(st, 'u', { op: 'state' });
+      const w = st.wallets.get('u');
+      await st.commit('u', w.version, { chips, vault: 0, econ: Object.assign(w.econ, { xp }), ledger: chips !== w.chips ? [{ account: 'chips', amount: chips - w.chips, kind: 'quests' }] : [] });
+      const ri = seededInt(777), out = [];
+      for (const id of SLOTS.MACHINE_IDS) {
+        let seq = 0;
+        const level = SLOTS.MACHINES[id].kind === 'classic' ? 5 : 1;
+        for (let i = 0; i < 300 || (st.tables.get('u/slot_' + id) || {}).free; i++) {
+          const r = await PLAY.handle(st, 'u', { op: 'deal', table: 'slot_' + id, seq, level }, { randInt: ri });
+          seq = r.view.seq;
+          out.push(r.view.last.stops.join(',') + ':' + r.view.last.win);
+          const w2 = st.wallets.get('u');
+          if (w2.chips < 200) await st.commit('u', w2.version, { chips: w2.chips + 1000, vault: 0, econ: w2.econ, ledger: [{ account: 'chips', amount: 1000, kind: 'quests' }] });
+        }
+      }
+      return out;
+    }
+    const ri = seededInt(777), direct = [];
+    for (const id of SLOTS.MACHINE_IDS) {
+      const m = SLOTS.MACHINES[id], level = m.kind === 'classic' ? 5 : 1;
+      let free = null;
+      for (let i = 0; i < 300 || free; i++) { const r = SLOTS.play(m, level, free, ri); free = r.free; direct.push(r.stops.join(',') + ':' + r.win); }
+    }
+    const lv1 = await serverSpins(0, 1000), diamond = await serverSpins(500000, 200000);
+    ok(lv1.length === direct.length && lv1.every((x, i) => x === direct[i]), 'server spins identical to SLOTS.play driven directly');
+    ok(lv1.length === diamond.length && lv1.every((x, i) => x === diamond[i]), 'Lv1 with 1,000 and Diamond with 200,000 got different spins');
+    report('same stops and wins as SLOTS.play (the page\'s code path); Lv1 vs Diamond identical (hard rule 2)', f);
   }
 
   section('the deal is indifferent to who you are (hard rule 2)');
