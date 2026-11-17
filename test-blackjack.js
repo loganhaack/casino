@@ -497,6 +497,33 @@ scenario('FB: player blackjack pays 3:2 before the dealer can make 22',
   const r = play(FB, '8 5 8 T 7 A 3 T', 10, ['split', 'stand', 'double']); // h1 8,7 ; h2 8,A soft 19 -> paid double
   check('FB: paid double on a free hand', [r.wagered, stakes(r)], [20, [[10, 0], [10, 10]]]);
 }
+// Pot of Gold: a coin per FREE double / FREE split, paid by coins at settlement.
+{
+  const POT = { coins1: 3, coins2: 12, coins3: 30, coins4: 50, coins5: 100, coins6: 100, coins7: 100 };
+  const rules = BJ.makeRules(Object.assign({}, FB, { potOfGold: POT }));
+  const potRound = (cards, actions, sideBet) => {
+    const shoe = BJ.stackedShoe(hand(cards));
+    const r = BJ.startRound(shoe, 10, rules, { side: { potOfGold: sideBet } });
+    for (const a of actions) BJ.act(r, shoe, a);
+    return r;
+  };
+  // Free split 6s, then free-double both 11s: 3 coins -> 30:1.
+  let r = potRound('6 T 6 7 5 T 5 T', ['split', 'double', 'double'], 5);
+  check('POT: free split + two free doubles = 3 coins', [r.side.potOfGold.coins, r.side.potOfGold.outcome, r.side.potOfGold.returned], [3, 'coins3', 5 * 31]);
+  check('POT: the main game is unchanged by the side bet', [r.wagered, r.returned, r.net], [15, 50 + 155, 190]);
+  // A paid double (soft 19 on a free hand) earns no coin: only the free split counts.
+  r = potRound('8 5 8 T 7 A 3 T', ['split', 'stand', 'double'], 5);
+  check('POT: paid double earns no coin', [r.side.potOfGold.coins, r.side.potOfGold.returned], [1, 5 * 4]);
+  // No free action: the side bet loses.
+  r = potRound('T 9 7 8', ['stand'], 5);
+  check('POT: no coins loses', [r.side.potOfGold.coins, r.side.potOfGold.outcome, r.side.potOfGold.returned], [0, null, 0]);
+  // Dealer blackjack ends the round before any free action.
+  r = potRound('T K 9 A', [], 5);   // ten up, Ace in the hole: the peek ends the round
+  check('POT: dealer blackjack, no coins', [r.phase, r.side.potOfGold.returned], ['done', 0]);
+  throws('POT: not offered at a table without it', () => BJ.startRound(BJ.stackedShoe(hand('T 9 7 8')), 10, BJ.makeRules(FB), { side: { potOfGold: 5 } }), RangeError);
+  throws('POT: no exact distribution (decided by play)', () => BJ.sideBetCounts('potOfGold', 6), RangeError);
+}
+
 check('FB: no free split offered on a non-pair', BJ.freeOffers(play(FB, '6 T 2 7', 10, [])), { double: false, split: false });
 check('FB: no free double offered after a hit', BJ.freeOffers(play(FB, '2 T 3 7 4', 10, ['hit'])).double, false);
 check('FB: free split and double both offered on 5,5? split yes, double yes',

@@ -103,7 +103,7 @@ function loadPage(storage) {
       addEventListener: () => {}, body: makeEl('body'),
     },
     BJ: require('./blackjack-core.js'), ECON: require('./economy.js'), TABLE_RULES: require('./tables.js'),
-    TCP: require('./tcp-core.js'), SLOTS, SLOT_ART: require('./slots-art.js'),
+    TCP: require('./tcp-core.js'), SLOTS, SLOT_ART: require('./slots-art.js'), ROULETTE: require('./roulette-core.js'),
   };
   sandbox.globalThis = sandbox; sandbox.window = sandbox;
   vm.createContext(sandbox);

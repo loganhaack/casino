@@ -71,6 +71,7 @@ sandbox.TABLE_RULES = require('./tables.js');
 sandbox.TCP = require('./tcp-core.js');
 sandbox.SLOTS = require('./slots-core.js');
 sandbox.SLOT_ART = require('./slots-art.js');
+sandbox.ROULETTE = require('./roulette-core.js');
 sandbox.globalThis = sandbox;
 
 // ---------------------------------------------------------------------------

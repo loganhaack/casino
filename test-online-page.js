@@ -98,7 +98,7 @@ function loadPage(net, storage) {
       addEventListener: () => {}, body: makeEl('body'),
     },
     BJ, ECON: require('./economy.js'), TABLE_RULES: require('./tables.js'), TCP: require('./tcp-core.js'),
-    SLOTS: require('./slots-core.js'), SLOT_ART: require('./slots-art.js'), JACKPOT: require('./jackpot.js'),
+    SLOTS: require('./slots-core.js'), SLOT_ART: require('./slots-art.js'), JACKPOT: require('./jackpot.js'), ROULETTE: require('./roulette-core.js'),
   };
   sandbox.globalThis = sandbox;
   sandbox.window = sandbox;
@@ -108,7 +108,7 @@ function loadPage(net, storage) {
   acctSignOut, econClaimQuest, econClaimAll, econVault, econBuy, econEquip, econSpinClick, econUnclaimed, E,
   TCPS, onTcpDeal, onTcpAct, deal, resolve, getPhase: () => phase,
   SLS, slotST, slotPick, onSlotSpin, slotSpin, setAnimUntil: (v) => { animUntil = v; },
-  getLB: () => LB, lbLoad, lbCard,
+  getLB: () => LB, lbLoad, lbCard, RLS, onRlSpin, rlSpin,
   get bjTable() { return bjTable; } };`, sandbox, { filename: 'index.html:script' });
   return { H: sandbox.__h, el: id => sandbox.document.getElementById(id) };
 }
@@ -173,7 +173,7 @@ setTimeout(() => { console.log('\nFAIL: timed out (a round never finished?)'); p
     for (const t of ['bj', 'fb']) {
       P.H.showGame(t);
       const ts = P.H.TS();
-      ts.bet = 20; ts.side = { perfectPairs: 2, twentyOnePlus3: 0 };
+      ts.bet = 20; ts.side = t === 'fb' ? { perfectPairs: 0, twentyOnePlus3: 0, potOfGold: 2 } : { perfectPairs: 2, twentyOnePlus3: 0, potOfGold: 0 };
       for (let i = 0; i < ROUNDS; i++) {
         const w = net.store.wallets.get(USER);
         if (w.chips < 300) {   // top up through a grant so the run continues
@@ -536,6 +536,32 @@ setTimeout(() => { console.log('\nFAIL: timed out (a round never finished?)'); p
        net.store.wallets.get(USER).vault === net.store.ledgerSum(USER, 'vault'), 'server ledger identity, chips and vault');
     ok(P.H.getS().chips === S0 && JSON.stringify(P.H.getS().econ.ledger) === L0, 'browser chips and browser ledger untouched by online rewards');
     report('Rewards online: Bonus Wheel, vault, shop, equip and quest claims all run on the server; page mirrors it', f);
+  }
+
+  console.log('\nroulette online');
+  {
+    const f = fail, R = require('./roulette-core.js');
+    const S0 = P.H.getS().chips, rl0 = JSON.stringify(P.H.getS().rl.stats);
+    P.H.showGame('roulette');
+    ok(P.H.RLS() === P.H.getON().rl, 'roulette uses the online state');
+    for (const wheel of R.WHEEL_IDS) {
+      P.H.RLS().wheel = wheel;
+      for (let i = 0; i < 60; i++) {
+        const w = net.store.wallets.get(USER);
+        if (w.chips < 300) await net.store.commit(USER, w.version, { chips: w.chips + 2000, vault: 0, econ: w.econ, ledger: [{ account: 'chips', amount: 2000, kind: 'quests' }] });
+        P.H.RLS().bets = { 'straight:17': 5, ['red:' + [...R.RED].sort((a, b) => a - b).join('-')]: 10 };
+        const before = net.store.wallets.get(USER).chips, rows0 = net.store.ledger.length;
+        await P.H.onRlSpin();
+        const res = net.responses[net.responses.length - 1].view.last;
+        const after = net.store.wallets.get(USER).chips;
+        const extra = net.store.ledger.slice(rows0).filter(x => x.account === 'chips' && x.kind !== 'bet' && x.kind !== 'payout').reduce((a, x) => a + x.amount, 0);
+        ok(after - before === res.net + extra, `server moved ${after - before}, spin net ${res.net} + ${extra}`);
+        ok(P.H.bankroll() === after && P.H.RLS().recent[0] === res.pocket, 'page bankroll and tote board match the server');
+        ok(Object.keys(P.H.RLS().bets).length === 0 && P.H.RLS().lastBets['straight:17'] === 5, 'layout cleared, bets kept for Rebet');
+      }
+    }
+    ok(P.H.getS().chips === S0 && JSON.stringify(P.H.getS().rl.stats) === rl0, 'browser chips and offline roulette untouched');
+    report('120 online spins on both wheels: page == server every spin; browser untouched', f);
   }
 
   console.log('\nplayers');

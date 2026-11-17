@@ -121,14 +121,23 @@
     //   perfectPairs:   player's first two cards. Categories perfect / colored / mixed.
     //   twentyOnePlus3: player's first two cards + dealer upcard as a 3-card poker hand.
     //                   Categories suitedTrips / straightFlush / trips / straight / flush.
+    //   potOfGold:      Free Bet only. One gold coin for every FREE double and
+    //                   FREE split taken during the round; pays on the number
+    //                   of coins (coins1 .. coins7; 7 is the most possible with
+    //                   4 hands). Decided by play, not by the deal, so it can't
+    //                   be enumerated: its edge is measured, with basic strategy.
     perfectPairs: null,
     twentyOnePlus3: null,
+    potOfGold: null,
   });
 
   const SIDE_BETS = {
     perfectPairs:   ['perfect', 'colored', 'mixed'],
     twentyOnePlus3: ['suitedTrips', 'straightFlush', 'trips', 'straight', 'flush'],
+    potOfGold:      ['coins1', 'coins2', 'coins3', 'coins4', 'coins5', 'coins6', 'coins7'],
   };
+  /** Side bets decided by the first cards dealt: exact distributions exist (sideBetCounts). */
+  const DEALT_SIDE_BETS = ['perfectPairs', 'twentyOnePlus3'];
 
   const DOUBLE_ON = { 'any': () => true, '9-11': t => t >= 9 && t <= 11, '10-11': t => t >= 10 && t <= 11 };
 
@@ -217,7 +226,7 @@
         const n = i === k ? C3 : (i === j || j === k) ? C2 * d : d * d * d;
         add(twentyOnePlus3Hand(i, j, k), n);
       }
-    } else throw new RangeError('Unknown side bet: ' + kind);
+    } else throw new RangeError('No exact distribution for side bet: ' + kind + ' (decided by play, not the deal)');
     counts.total = Object.keys(counts).reduce((s, k) => s + counts[k], 0);
     return counts;
   }
@@ -230,6 +239,8 @@
     straightFlush: ['straightFlush', 'straight', 'flush'],
     trips: ['trips'], straight: ['straight'], flush: ['flush'],
     perfect: ['perfect', 'colored'], colored: ['colored'], mixed: ['mixed'],
+    coins1: ['coins1'], coins2: ['coins2'], coins3: ['coins3'], coins4: ['coins4'],
+    coins5: ['coins5'], coins6: ['coins6'], coins7: ['coins7'],
   };
 
   /** Pays N to 1 for this category under this paytable; 0 = the bet loses. */
@@ -384,6 +395,7 @@
       if (!SIDE_BETS[k]) throw new RangeError('Unknown side bet: ' + k);
       if (!Number.isInteger(v) || v < 0) throw new RangeError(`Side bet ${k} must be a whole number >= 0: ${v}`);
       if (v > 0 && !rules[k]) throw new RangeError(`Side bet ${k} is not offered at this table`);
+      if (v > 0 && k === 'potOfGold' && !(rules.freeDoubles || rules.freeSplits)) throw new RangeError('Pot of Gold needs free doubles or free splits');
     }
     const round = {
       rules, phase: 'dealing', dealer: [], hands: [newHand([], bet, 0, false, false)], active: 0,
@@ -398,11 +410,17 @@
     hand.cards.push(drawCard(round, shoe, ri));
     round.dealer.push(drawCard(round, shoe, ri));
 
-    // Side bets are decided by the cards just dealt. Payout happens in settle().
+    // Side bets are decided by the cards just dealt (Pot of Gold: by the free
+    // doubles and splits still to come). Payout happens in settle().
     round.side = {};
     for (const kind of Object.keys(SIDE_BETS)) {
       const amt = sideIn[kind] || 0;
       if (!amt) continue;
+      if (kind === 'potOfGold') {
+        round.side.potOfGold = { bet: amt, coins: 0, outcome: null, pays: 0, returned: 0 };
+        round.wagered += amt;
+        continue;
+      }
       const cat = kind === 'perfectPairs'
         ? perfectPairsHand(hand.cards[0], hand.cards[1])
         : twentyOnePlus3Hand(hand.cards[0], hand.cards[1], round.dealer[0]);
@@ -507,7 +525,7 @@
         break;
       case 'double': {
         const base = actionOf(h);          // doubling doubles everything in action
-        if (isFreeDouble(round, h)) { h.free += base; h.freeDoubled = true; }
+        if (isFreeDouble(round, h)) { h.free += base; h.freeDoubled = true; potCoin(round); }
         else { round.wagered += base; h.bet += base; }
         h.doubled = true;
         h.cards.push(drawCard(round, shoe, ri));
@@ -518,6 +536,7 @@
         const base = actionOf(h);          // the new hand carries the same action
         const free = isFreeSplit(round, h);
         if (!free) round.wagered += base;
+        else potCoin(round);
         const second = h.cards.pop();
         const aces = cardValue(second) === 1;
         h.fromSplit = true;
@@ -528,6 +547,11 @@
       }
     }
     return advance(round, shoe, ri);
+  }
+
+  /** Pot of Gold: one coin per free double or free split taken. */
+  function potCoin(round) {
+    if (round.side && round.side.potOfGold) round.side.potOfGold.coins++;
   }
 
   /** Move to the next hand that needs a decision, or finish the round. */
@@ -595,6 +619,13 @@
     }
     round.insuranceReturned = round.dealerBlackjack ? round.insurance * 3 : 0;   // stake + 2:1
     returned += round.insuranceReturned;
+    const pot = round.side.potOfGold;
+    if (pot) {
+      const cat = pot.coins > 0 ? 'coins' + Math.min(pot.coins, 7) : null;
+      pot.pays = sideBetPays(round.rules.potOfGold, cat);
+      pot.outcome = pot.pays > 0 ? cat : null;
+      pot.returned = pot.pays > 0 ? pot.bet * (pot.pays + 1) : 0;
+    }
     for (const k of Object.keys(round.side)) returned += round.side[k].returned;
     round.returned = returned;
     round.net = returned - round.wagered;
@@ -721,7 +752,7 @@
     DEFAULT_RULES, makeRules,
     cryptoRandInt, newShoe, stackedShoe, needsShuffle,
     startRound, legalActions, freeOffers, act, playDealer, basicStrategy,
-    SIDE_BETS, perfectPairsHand, twentyOnePlus3Hand, sideBetPays, sideBetCounts, sideBetReturn,
+    SIDE_BETS, DEALT_SIDE_BETS, perfectPairsHand, twentyOnePlus3Hand, sideBetPays, sideBetCounts, sideBetReturn,
   };
 
   if (typeof module === 'object' && module.exports) module.exports = BJ;

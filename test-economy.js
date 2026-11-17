@@ -277,7 +277,7 @@ for (const which of ['bonus', 'rescue']) {
 
 const HTML = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 const SCRIPT = HTML.match(/<script>([\s\S]*?)<\/script>/)[1];
-for (const f of ['blackjack-core.js', 'tables.js', 'tcp-core.js', 'slots-core.js', 'slots-art.js', 'economy.js']) {
+for (const f of ['blackjack-core.js', 'tables.js', 'tcp-core.js', 'slots-core.js', 'slots-art.js', 'roulette-core.js', 'economy.js']) {
   ok(`index.html loads ${f}`, HTML.includes(`<script src="${f}"></script>`));
 }
 
@@ -315,7 +315,7 @@ function loadPage({ store, clock, crypto }) {
       querySelectorAll: () => [], createElement: () => makeEl('tmp'), addEventListener: () => {},
     },
     BJ, ECON, TABLE_RULES: require('./tables.js'), TCP: require('./tcp-core.js'),
-    SLOTS: require('./slots-core.js'), SLOT_ART: require('./slots-art.js'),
+    SLOTS: require('./slots-core.js'), SLOT_ART: require('./slots-art.js'), ROULETTE: require('./roulette-core.js'),
   };
   sb.globalThis = sb;
   vm.createContext(sb);

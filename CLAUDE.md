@@ -25,7 +25,8 @@ node test-blackjack-payouts.js # real page code: chip accounting, house edge, de
 node test-economy.js           # wheels, quests, events, ledger, "deal is indifferent to who you are", ~30s
 node enumerate-slots.js        # exact slot PAR sheets, every reel-stop combination, ~2min; fails if SLOTS.PAR drifts
 node test-slots.js             # real page code: slot chip accounting, RTP within 4 SE, free spins + reload, ~3min
-node sync-shared.js            # copy blackjack-core/tcp-core/slots-core/jackpot/tables/economy into supabase/functions/_shared/
+node test-roulette.js          # layout + exact odds, settle vs brute force, uniform pockets, page accounting, ~2min
+node sync-shared.js            # copy blackjack-core/tcp-core/slots-core/jackpot/roulette-core/tables/economy into supabase/functions/_shared/
 node sync-shared.js --check    # fails if the server's copies drift from the root files
 node test-server.js            # online table server vs in-memory commit_turn: ledger, no leaks, same game, ~30s
 node test-online-page.js       # real page code playing online against the real server logic, ~10s
@@ -42,7 +43,8 @@ The enumerators must validate the exact code that deals the game. Each game's
 logic lives in ONE classic-script file that the page (`<script src>`), the
 enumerator, the harnesses and the server all load: `tcp-core.js` (`eval3()`,
 `categorize6()`, deal, `settle()`), `blackjack-core.js` and `slots-core.js`
-(reel strips, paytables, spin, pay). Table-game paytables live in `tables.js`. **Never copy any of it into `index.html` or `enumerate.js`.** A
+(reel strips, paytables, spin, pay) and `roulette-core.js` (every legal bet,
+spin, settle). Table-game paytables live in `tables.js`. **Never copy any of it into `index.html` or `enumerate.js`.** A
 copy that drifts means the enumerator is validating a different game than the
 one being played, and the whole verification story is theater. (`eval3()`
 used to be duplicated in both files and kept in sync by hand; it no longer is.)
@@ -122,6 +124,12 @@ moves chips and renders.
   with. Change a rule, re-measure, update the number.
 - `isNatural(cards, fromSplit)` and `dealerShouldHit(cards, rules)` throw if the
   split flag / `rules.hitSoft17` is missing. That is deliberate. Don't add defaults.
+- **Pot of Gold** (`potOfGold`, Free Bet only, the owner's casino's rules;
+  Free Bet has no other side bets): a coin per FREE double or FREE split, paid
+  on coins at settle(). It depends on play, so it is NOT enumerable
+  (`BJ.DEALT_SIDE_BETS` lists the ones that are); its edge is measured with
+  basic strategy (`fbPotOfGoldEdge`, 6.81% over 40M rounds) and checked by
+  test-blackjack-payouts.js section E.
 - **Side bets** (`perfectPairs`, `twentyOnePlus3` paytables in the table's
   rules) are decided in `startRound()` from the first cards and paid in
   `settle()` with everything else. Their odds are enumerated exactly
@@ -206,7 +214,7 @@ weekly event calendar, daily quests, and the cosmetics shop.
   then explicit column grants and policies. Verify from outside with the
   publishable key that anonymous reads/writes get `42501`.
 - Edge Functions load `supabase/functions/_shared/` copies of
-  `blackjack-core.js`, `tcp-core.js`, `slots-core.js`, `jackpot.js`, `tables.js` and `economy.js`. Those are byte-identical
+  `blackjack-core.js`, `tcp-core.js`, `slots-core.js`, `jackpot.js`, `roulette-core.js`, `tables.js` and `economy.js`. Those are byte-identical
   copies made by `sync-shared.js`; never edit them. Edit the root file, re-sync,
   and run `--check` before any deploy (the eval3() drift rule, server edition).
 - **Online server** is the `play` Edge Function. `logic.js` is all of its
@@ -298,11 +306,25 @@ which is a no-op without audio (Node harnesses). `bigHit()` is the
 full-screen popup (jackpots, slot wins of 25x+, table wins of 15x+). Both are
 presentation only and run after a result is settled; nothing reads them.
 
+## Roulette
+
+`roulette-core.js` (`ROULETTE`): American (0/00) and European (0) wheels.
+Every legal bet is generated from the layout geometry (straight, split,
+street, corner, six line, zero-area splits/trios, American basket, European
+first four, all outside bets), so the page draws its chip spot and the server
+can refuse anything that isn't a real bet. A spin is one uniform pocket;
+`settle()` is the only payout. Exact edges by construction: (N+1)k/pockets.
+Online tables `rl_american` / `rl_european`. Bets on the layout leave the
+bankroll only when the spin is sent (nothing is "in play" between spins).
+Table limit is per bet; table minimum is 5 chips a spin.
+
 ## Players: leaderboard and profiles (online)
 
 - The `leaderboard` op returns every online player as a public card: display
   name, avatar, level/tier, title, equipped cosmetics, worth (chips + vault),
   this week's game net (bet + payout rows since Monday 00:00 ET,
+  all-time gains / losses / net (rounds grouped by ref; v2 migration
+  `20261117000002_leaderboard_alltime.sql`, which replaces v1),
   `ECON.weekStart`), best single round (bet + payout grouped by ref; a
   jackpot is its own ref) and jackpots. Computed by the SQL function
   `leaderboard()` (migration `20261117000001_leaderboard.sql`) from tables
@@ -319,7 +341,7 @@ presentation only and run after a result is settled; nothing reads them.
 ## Next up
 
 The roadmap is done (see README). Ideas the owner hasn't decided on yet:
-weekly tournaments with prizes, friend lists, more slot machines.
+weekly tournaments with prizes, friend lists, more slot machines, craps.
 
 Edge checks in both payout harnesses fail only beyond 4 standard errors
 (about 1 run in 16,000 for a correct game). If one fails, re-run once; if it

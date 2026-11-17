@@ -690,6 +690,52 @@
   .pcos .sw { width: 36px; height: 24px; border-radius: 5px; display: inline-block; vertical-align: middle; margin-right: 4px; border: 1px solid rgba(255,255,255,.15); }
   @media (max-width: 560px) { .lb-row { grid-template-columns: 28px auto 1fr auto; gap: 7px; padding: 7px; } .lb-val { font-size: 14px; } }
 
+  /* ---------- roulette (display only; rules in roulette-core.js) ---------- */
+  .rl-top { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 16px; align-items: center; }
+  .rl-wheelbox { position: relative; }
+  .rl-wheel { width: 100%; height: auto; display: block; filter: drop-shadow(0 10px 18px rgba(0,0,0,.6)); }
+  .rl-wheel .rotor, .rl-wheel .orbit, .rl-wheel .drop { transform-box: view-box; transform-origin: 0 0; }
+  .rl-result { display: inline-flex; align-items: center; justify-content: center; min-width: 64px; height: 64px; border-radius: 50%;
+    font: 900 28px/1 'Arial Black', Impact, sans-serif; color: #fff; border: 3px solid #e8c547; box-shadow: 0 0 18px rgba(232,197,71,.5); }
+  .rl-result.red { background: radial-gradient(circle at 40% 35%, #e0353d, #8a0a10); }
+  .rl-result.black { background: radial-gradient(circle at 40% 35%, #3a3a3a, #0b0b0b); }
+  .rl-result.green { background: radial-gradient(circle at 40% 35%, #1fae5c, #075a2b); }
+  .rl-result.none { background: rgba(255,255,255,.06); color: var(--text-dim); font-size: 14px; }
+  .rl-tote { display: flex; gap: 4px; flex-wrap: wrap; margin: 10px 0; }
+  .rl-tote span { min-width: 28px; padding: 3px 5px; border-radius: 6px; text-align: center; font: 700 13px var(--mono); color: #fff; }
+  .rl-tote .red { background: #a8141b; } .rl-tote .black { background: #1d1d1d; border: 1px solid #333; } .rl-tote .green { background: #0a7a3b; }
+  .rl-tote span:first-child { outline: 2px solid #e8c547; }
+  .rl-chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+  .rl-chipbtn { width: 46px; height: 46px; border-radius: 50%; cursor: pointer; font: 800 12px/1 var(--mono); color: #fff;
+    border: 4px dashed rgba(255,255,255,.85); background: var(--cc, #1e6fe3); box-shadow: 0 2px 0 #000, inset 0 0 0 3px var(--cc, #1e6fe3); }
+  .rl-chipbtn.on { outline: 3px solid #e8c547; outline-offset: 2px; transform: translateY(-2px); }
+  .rl-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .rl-wheeltabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+  .rl-wheeltabs button { font: inherit; font-size: 12.5px; padding: 6px 12px; border-radius: 14px; cursor: pointer;
+    background: rgba(255,255,255,.06); color: var(--text); border: 1px solid var(--border); }
+  .rl-wheeltabs button.on { background: var(--chip); color: #1a1a1a; border-color: var(--chip); }
+  .rl-scroll { overflow-x: auto; margin-top: 14px; padding-bottom: 6px; }
+  .rl-board { position: relative; min-width: 560px; aspect-ratio: 14 / 4.8; border-radius: 10px; user-select: none;
+    background: radial-gradient(ellipse at 50% 0%, var(--felt), var(--felt-dark)); border: 8px solid var(--rail);
+    box-shadow: inset 0 2px 20px rgba(0,0,0,.5); }
+  .rl-cell { position: absolute; display: flex; align-items: center; justify-content: center; cursor: pointer;
+    border: 1px solid rgba(255,255,255,.55); color: #fff; font: 800 clamp(11px, 1.6vw, 17px)/1 system-ui, sans-serif; }
+  .rl-cell .n { display: inline-flex; align-items: center; justify-content: center; width: 70%; aspect-ratio: 1; max-width: 34px; border-radius: 50%; }
+  .rl-cell .n.red { background: #b5141c; } .rl-cell .n.black { background: #121212; }
+  .rl-cell.zero { background: rgba(10,122,59,.55); }
+  .rl-cell.out { font-size: clamp(10px, 1.3vw, 14px); letter-spacing: .04em; }
+  .rl-cell.out .dia { width: 42%; height: 60%; clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+  .rl-cell:hover { background-color: rgba(255,255,255,.08); }
+  .rl-cell.won { box-shadow: inset 0 0 0 3px #ffe066, 0 0 16px rgba(255,224,102,.8); z-index: 1; }
+  .rl-hot { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; cursor: pointer; z-index: 2; }
+  .rl-hot:hover { background: rgba(255,255,255,.28); box-shadow: 0 0 0 2px rgba(255,255,255,.6); }
+  .rl-chip { position: absolute; z-index: 3; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; pointer-events: none;
+    display: flex; align-items: center; justify-content: center; font: 800 10px/1 var(--mono); color: #fff;
+    background: var(--cc, #1e6fe3); border: 3px dashed rgba(255,255,255,.9); box-shadow: 0 2px 4px rgba(0,0,0,.7); }
+  .rl-chip.win { box-shadow: 0 0 0 3px #ffe066, 0 0 14px #ffd23b; }
+  .rl-chip.lost { opacity: .35; }
+  @media (max-width: 640px) { .rl-top { grid-template-columns: 1fr; } .rl-wheelbox { max-width: 260px; margin: 0 auto; } }
+
   /* ---------- big-hit celebration (display only) ---------- */
   #bigHit { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; overflow: hidden;
     background: radial-gradient(ellipse at 50% 45%, rgba(70,20,0,.82), rgba(0,0,0,.9)); cursor: pointer; }
@@ -739,6 +785,7 @@
       <button data-game="tcp"><span class="long">Three Card Poker</span><span class="short">Poker</span></button>
       <button data-game="bj">Blackjack</button>
       <button data-game="fb">Free Bet</button>
+      <button data-game="roulette">Roulette</button>
       <button data-game="slots">Slots</button>
       <button data-game="rewards">Rewards</button>
       <button data-game="players">Players</button>
@@ -895,6 +942,14 @@
             <button data-bjside="twentyOnePlus3" data-d="1">+</button>
           </div>
         </div>
+        <div class="betbox" id="bjBox-potOfGold">
+          <div class="name" id="bjPotName">Pot of Gold</div>
+          <div class="val" id="bjSide-potOfGold">0</div>
+          <div class="adj">
+            <button data-bjside="potOfGold" data-d="-1">&minus;</button>
+            <button data-bjside="potOfGold" data-d="1">+</button>
+          </div>
+        </div>
         <div class="shoeinfo" id="bjShoe"></div>
       </div>
 
@@ -941,6 +996,38 @@
       <p class="sub" id="lbNote" style="margin:10px 0 0"></p>
     </div>
     <div class="panel" id="lbCard" style="margin-top:14px" hidden></div>
+  </section>
+
+  <!-- ===================== ROULETTE ===================== -->
+  <section id="game-roulette" hidden>
+    <div class="felt">
+      <div class="rl-wheeltabs" id="rlWheels"></div>
+      <div class="rl-top">
+        <div class="rl-wheelbox" id="rlWheelBox"></div>
+        <div>
+          <div style="display:flex;gap:14px;align-items:center">
+            <div class="rl-result none" id="rlResult">&mdash;</div>
+            <div><div class="sub">Bet on the layout</div><div style="font:700 20px var(--mono)" id="rlTotal">0</div>
+              <div class="sub" id="rlLimit"></div></div>
+          </div>
+          <div class="rl-tote" id="rlTote"></div>
+          <div class="rl-chips" id="rlChips"></div>
+          <div class="rl-actions">
+            <button class="sl-spin" id="rlSpin" style="width:76px;height:76px;font-size:15px">SPIN</button>
+            <button class="sl-btn" id="rlUndo">Undo</button>
+            <button class="sl-btn" id="rlClear">Clear</button>
+            <button class="sl-btn" id="rlRebet">Rebet</button>
+            <button class="sl-btn" id="rlDouble">x2</button>
+          </div>
+        </div>
+      </div>
+      <p id="rlMsg" style="min-height:2.6em;margin:10px 0 0;text-align:center"></p>
+      <div class="rl-scroll"><div class="rl-board" id="rlBoard"></div></div>
+    </div>
+    <div class="grid2">
+      <div class="panel"><h3>Bets and exact odds</h3><table id="rlOdds"></table></div>
+      <div class="panel"><h3>Your play on this wheel</h3><table id="rlStats"></table></div>
+    </div>
   </section>
 
   <!-- ===================== SLOTS ===================== -->
@@ -1143,6 +1230,8 @@
 <script src="slots-art.js"></script>
 <!-- Linked progressive jackpot rules (the server runs them; the page shows the meters). -->
 <script src="jackpot.js"></script>
+<!-- Roulette: wheels, every legal bet, spin and settle (one copy, shared with the tests and the server). -->
+<script src="roulette-core.js"></script>
 <!-- Sound effects, synthesized (no files). Presentation only. -->
 <script src="sound.js"></script>
 <!-- Economy (ranks, wheels, quests, events, shop). Grants chips only; never
@@ -1173,6 +1262,7 @@ const RULES = {
   freeBet:     TABLE_RULES.freeBet,
   bjHouseEdge: TABLE_RULES.bjHouseEdge,
   fbHouseEdge: TABLE_RULES.fbHouseEdge,
+  fbPotOfGoldEdge: TABLE_RULES.fbPotOfGoldEdge,
   bjMinBet:    TABLE_RULES.bjMinBet,
   bjBetStep:   TABLE_RULES.bjBetStep,
 
@@ -1245,6 +1335,7 @@ const blankState = () => ({
   game: 'home',                  // which tab is showing: 'home' | 'tcp' | 'bj' | 'fb' | 'rewards'
   tcpRound: null,                // TCP hand awaiting play/fold, persisted so a reload can't eat the stake
   slots: blankSlots(),           // per machine: bet, free-spins state (persisted: a reload can't lose them), stats
+  rl: blankRl(),                 // roulette: chosen wheel, chips on the layout, last bets, stats
   bj: blankBj(),                 // classic blackjack table
   fb: blankBj(),                 // Free Bet blackjack table (same shape)
   econ: blankEcon(),
@@ -1266,7 +1357,7 @@ function blankEcon() {
 function blankBj() {
   return {
     bet: 10,
-    side: { perfectPairs: 0, twentyOnePlus3: 0 },
+    side: { perfectPairs: 0, twentyOnePlus3: 0, potOfGold: 0 },
     round: null,   // in-progress round, persisted so a reload can't eat a wager
     shoe: null,
     last: null,    // most recent finished round, for display
@@ -1281,6 +1372,7 @@ function blankBj() {
       side: {
         perfectPairs:   { bets: 0, wagered: 0, net: 0, cats: {} },
         twentyOnePlus3: { bets: 0, wagered: 0, net: 0, cats: {} },
+        potOfGold:      { bets: 0, wagered: 0, net: 0, cats: {} },
       },
     },
     history: [],
@@ -1289,7 +1381,7 @@ function blankBj() {
 
 /** Sum of every game's tracked net result. */
 function gameNets(s) {
-  return s.stats.net + s.bj.stats.net + s.fb.stats.net + slotsNet(s);
+  return s.stats.net + s.bj.stats.net + s.fb.stats.net + slotsNet(s) + s.rl.stats.net;
 }
 
 /** Chips already taken from the bankroll for rounds that haven't settled. */
@@ -1324,10 +1416,15 @@ function load() {
         const hadMainNet = !!(s[k] && s[k].stats && 'mainNet' in s[k].stats);
         s[k] = Object.assign(blankBj(), s[k]);
         s[k].stats = Object.assign(blankBj().stats, s[k].stats);
+        // side bets added later (Pot of Gold): merge, don't replace
+        s[k].side = Object.assign(blankBj().side, s[k].side);
+        s[k].stats.side = Object.assign(blankBj().stats.side, s[k].stats.side);
         // Saves from before side bets existed: all of net was main-game net.
         if (!hadMainNet) s[k].stats.mainNet = s[k].stats.net;
       }
       s.slots = mergeSlots(parsed.slots);
+      s.rl = Object.assign(blankRl(), parsed.rl || {});
+      s.rl.stats = Object.assign(blankRl().stats, (parsed.rl || {}).stats || {});
       const e = blankEcon();
       s.econ = Object.assign(e, parsed.econ || {});
       s.econ.ledger = Object.assign(e.ledger, (parsed.econ || {}).ledger || {});
@@ -1914,12 +2011,15 @@ const bankroll = () => (online() ? ON.wallet.chips : S.chips);
 const TCPS = () => (online() ? ON.tcp : S);
 const BJ_OUTCOME = { blackjack: 'Blackjack', win: 'Win', push: 'Push', lose: 'Lose', bust: 'Bust' };
 const BJ_SIDE_KEYS = Object.keys(BJ.SIDE_BETS);
-const BJ_SIDE_NAME = { perfectPairs: 'Perfect Pairs', twentyOnePlus3: '21+3' };
+const BJ_SIDE_NAME = { perfectPairs: 'Perfect Pairs', twentyOnePlus3: '21+3', potOfGold: 'Pot of Gold' };
 const BJ_CAT_NAME = {
   perfect: 'Perfect pair', colored: 'Colored pair', mixed: 'Mixed pair',
   suitedTrips: 'Suited trips', straightFlush: 'Straight flush', trips: 'Three of a kind',
   straight: 'Straight', flush: 'Flush', lose: 'No win',
+  coins1: '1 coin', coins2: '2 coins', coins3: '3 coins', coins4: '4 coins', coins5: '5 coins', coins6: '6 coins', coins7: '7 coins',
 };
+/** Pot of Gold is decided by play, not the deal: its edge is measured (tables.js), not enumerated. */
+const bjPotEdge = () => RULES.fbPotOfGoldEdge;
 
 /** Exact side-bet distribution for a table, enumerated in-page (not hardcoded). Cached. */
 const BJ_SIDE_EXACT = {};
@@ -2157,9 +2257,13 @@ function bjRender() {
   $('bjBet').innerHTML = betHTML(TS().bet);
   for (const k of BJ_SIDE_KEYS) {
     $('bjBox-' + k).hidden = !T().rules[k];
-    $('bjSide-' + k).innerHTML = betHTML(TS().side[k]);
+    $('bjSide-' + k).innerHTML = betHTML(TS().side[k] || 0);
     $('bjBox-' + k).classList.toggle('active', TS().side[k] > 0);
   }
+  // Pot of Gold: the coins collected so far this round (one per free double or free split).
+  const pot = (TS().round || TS().last || {}).side;
+  const coins = pot && pot.potOfGold ? pot.potOfGold.coins : null;
+  $('bjPotName').innerHTML = 'Pot of Gold' + (coins ? ` &middot; ${'\u{1FA99}'.repeat(Math.min(coins, 7))}` : '');
   const sh = TS().shoe;
   $('bjShoe').textContent = sh
     ? `Shoe: ${sh.cards.length - sh.pos} of ${sh.cards.length} cards left` +
@@ -2309,7 +2413,13 @@ function bjRenderStats() {
     row('Doubles / splits / insurance', `${st.doubles} / ${st.splits} / ${st.insured}`);
     for (const k of BJ_SIDE_KEYS) {
       const ss = st.side[k];
-      if (!T().rules[k] || !ss.bets) continue;
+      if (!T().rules[k] || !ss || !ss.bets) continue;
+      if (k === 'potOfGold') {
+        rows.push(`<tr><td colspan="2" style="padding-top:8px;color:#667;font-size:11px;text-transform:uppercase;letter-spacing:.08em">Pot of Gold (${ss.bets} bets)</td></tr>`);
+        row('Return', vs(1 + ss.net / ss.wagered, 1 - bjPotEdge()));
+        for (const c of BJ.SIDE_BETS[k]) if (ss.cats[c]) row(BJ_CAT_NAME[c], ss.cats[c]);
+        continue;
+      }
       const ex = bjSideExact(k);
       rows.push(`<tr><td colspan="2" style="padding-top:8px;color:#667;font-size:11px;text-transform:uppercase;letter-spacing:.08em">${BJ_SIDE_NAME[k]} (${ss.bets} bets)</td></tr>`);
       row('Return', vs(1 + ss.net / ss.wagered, 1 + ex.ret));
@@ -2352,7 +2462,11 @@ function bjRenderRules() {
     ...(r.freeDoubles || r.freeSplits ? [['Free bets', 'a win pays as if the chip were yours; a push or loss just returns the free chip']] : []),
     ['Surrender', 'not offered'],
     ['Bets', `${RULES.bjMinBet} minimum; your table limit is ${econMaxBet().toLocaleString()} per bet (set by rank); side bets optional`],
-    ...BJ_SIDE_KEYS.filter(k => r[k]).map(k => {
+    ...(r.potOfGold ? [['Pot of Gold', 'a gold coin for every free double and free split you take this round; pays ' +
+      BJ.SIDE_BETS.potOfGold.filter(c => r.potOfGold[c]).map(c => `${BJ_CAT_NAME[c]} ${r.potOfGold[c]}:1`).join(', ') +
+      `. No coins loses. House edge ${(100 * bjPotEdge()).toFixed(2)}% with basic strategy (measured by test-blackjack-payouts.js; ` +
+      'it depends on play, so it can\'t be enumerated like the other side bets)']] : []),
+    ...BJ.DEALT_SIDE_BETS.filter(k => r[k]).map(k => {
       const ex = bjSideExact(k);
       const pays = BJ.SIDE_BETS[k].filter(c => r[k][c]).map(c => `${BJ_CAT_NAME[c]} ${r[k][c]}:1`).join(', ');
       return [BJ_SIDE_NAME[k], `${pays}. Exact house edge ${(-100 * ex.ret).toFixed(4)}% ` +
@@ -2367,7 +2481,7 @@ function bjRenderRules() {
 /* ---------- table switching ---------- */
 
 function showGame(g) {
-  S.game = BJ_TABLES[g] || ['rewards', 'home', 'slots', 'players'].includes(g) ? g : 'tcp';
+  S.game = BJ_TABLES[g] || ['rewards', 'home', 'slots', 'players', 'roulette'].includes(g) ? g : 'tcp';
   const isBj = !!BJ_TABLES[S.game];
   $('game-bj').hidden = !isBj;
   $('game-tcp').hidden = S.game !== 'tcp';
@@ -2375,6 +2489,8 @@ function showGame(g) {
   $('game-slots').hidden = S.game !== 'slots';
   if (S.game === 'slots') slotRender();
   $('game-players').hidden = S.game !== 'players';
+  $('game-roulette').hidden = S.game !== 'roulette';
+  if (S.game === 'roulette') rlRender();
   if (S.game === 'players') lbShow();
   $('game-home').hidden = S.game !== 'home';
   if (S.game === 'rewards') econRenderRewards();
@@ -2489,6 +2605,9 @@ const HOME_GAMES = [
   { id: 'fb', name: 'Free Bet Blackjack', edge: () => `House edge ${(100 * RULES.fbHouseEdge).toFixed(2)}% with its own strategy`,
     ds: 'Free doubles and splits on the house. Dealer 22 pushes.',
     net: () => S.fb.stats.net, n: () => S.fb.stats.rounds, unit: 'rounds' },
+  { id: 'roulette', name: 'Roulette', edge: () => 'House edge 5.26% American, 2.70% European (exact)',
+    ds: 'American and European wheels, every bet on a real layout.',
+    net: () => S.rl.stats.net, n: () => S.rl.stats.spins, unit: 'spins' },
   { id: 'slots', name: 'Slots', edge: () => 'Return ' + SLOTS.MACHINE_IDS.map(k => (100 * SLOTS.PAR[k].rtp).toFixed(2) + '%').join(' / ') + ' (exact)',
     ds: SLOTS.MACHINE_IDS.map(k => SLOTS.MACHINES[k].name).join(', ') + '. Every reel strip published.',
     net: () => slotsNet(S), n: () => SLOTS.MACHINE_IDS.reduce((n, k) => n + S.slots.m[k].stats.paid, 0), unit: 'spins' },
@@ -2762,6 +2881,258 @@ async function acctBoot() {
 }
 
 /* ===========================================================================
+   ROULETTE
+   ---------------------------------------------------------------------------
+   Rules, every legal bet and the payout are roulette-core.js (ROULETTE), the
+   same file the server and test-roulette.js run. The page keeps the chips
+   you've put on the layout (they leave your bankroll only when you spin),
+   moves chips offline, draws the wheel and keeps display stats. The wheel
+   turns AFTER the pocket is drawn and paid; nothing waits on the animation.
+   =========================================================================== */
+
+const RL_CHIPS = [1, 5, 25, 100, 500, 1000, 5000];
+const RL_CHIP_COLOR = { 1: '#8d95a0', 5: '#c8141c', 25: '#1a8a3e', 100: '#151515', 500: '#6a1fb0', 1000: '#d9a93a', 5000: '#c2551f' };
+const rlChipColor = (v) => RL_CHIP_COLOR[RL_CHIPS.slice().reverse().find(c => v >= c) || 1];
+
+function blankRl() {
+  return { wheel: 'american', chip: 5, bets: {}, lastBets: {}, recent: [], history: [], seq: { american: 0, european: 0 },
+           stats: { spins: 0, wagered: 0, returned: 0, net: 0, expNet: 0, wins: 0, red: 0, black: 0, green: 0 } };
+}
+/** Roulette state for the current mode (online: display stats, the server's seq and recent numbers). */
+function RLS() { return online() ? ON.rl : S.rl; }
+const rlW = () => ROULETTE.WHEELS[RLS().wheel];
+let rlUndoStack = [];                    // UI only
+let rlDeg = { wheel: 0, ball: 0 };       // display only: where the wheel and ball were left
+let rlLastRes = null;                    // display only: the spin shown on the layout
+
+const rlTotal = (b) => Object.values(b).reduce((a, x) => a + x, 0);
+const pctX = (x) => (100 * x / 14).toFixed(3) + '%', pctY = (y) => (100 * y / 4.8).toFixed(3) + '%';
+
+function rlWheelSVG(w) {
+  const N = w.pockets, a = 360 / N, r1 = 62, r2 = 92;
+  const pt = (r, deg) => { const t = (deg - 90) * Math.PI / 180; return [(r * Math.cos(t)).toFixed(2), (r * Math.sin(t)).toFixed(2)]; };
+  let sectors = '';
+  w.order.forEach((n, i) => {
+    const c = ROULETTE.colorOf(n), fill = c === 'red' ? '#b0161e' : c === 'black' ? '#151515' : '#0a7a3b';
+    const [x1, y1] = pt(r2, (i - 0.5) * a), [x2, y2] = pt(r2, (i + 0.5) * a), [x3, y3] = pt(r1, (i + 0.5) * a), [x4, y4] = pt(r1, (i - 0.5) * a);
+    sectors += `<path d="M${x1} ${y1} A${r2} ${r2} 0 0 1 ${x2} ${y2} L${x3} ${y3} A${r1} ${r1} 0 0 0 ${x4} ${y4} Z" fill="${fill}" stroke="#d9b44a" stroke-width=".8"/>`;
+    sectors += `<text x="0" y="${-r2 + 11}" transform="rotate(${(i * a).toFixed(3)})" text-anchor="middle" font-family="Arial, sans-serif" font-weight="700" font-size="${N > 37 ? 8.2 : 8.6}" fill="#fff">${ROULETTE.label(n)}</text>`;
+  });
+  return `<svg class="rl-wheel" viewBox="-110 -110 220 220" aria-label="Roulette wheel">
+    <defs><radialGradient id="rlWood" cx=".5" cy=".5" r=".5"><stop offset=".78" stop-color="#5a3412"/><stop offset=".9" stop-color="#8a5a24"/><stop offset="1" stop-color="#3a1f08"/></radialGradient>
+      <radialGradient id="rlCone" cx=".45" cy=".4" r=".6"><stop offset="0" stop-color="#a87a3a"/><stop offset="1" stop-color="#4a2a0c"/></radialGradient>
+      <linearGradient id="rlGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff3b0"/><stop offset=".5" stop-color="#d9a93a"/><stop offset="1" stop-color="#7a5210"/></linearGradient></defs>
+    <circle r="108" fill="url(#rlWood)"/><circle r="99" fill="#2a1606" stroke="url(#rlGold)" stroke-width="2"/>
+    <g class="rotor" id="rlRotor" style="transform:rotate(${rlDeg.wheel}deg)">
+      ${sectors}
+      <circle r="${r1}" fill="url(#rlCone)" stroke="url(#rlGold)" stroke-width="2"/>
+      <circle r="44" fill="none" stroke="#d9b44a" stroke-width=".8" opacity=".6"/>
+      ${Array.from({ length: 8 }, (_, k) => `<line x1="0" y1="-14" x2="0" y2="-56" stroke="url(#rlGold)" stroke-width="2.4" transform="rotate(${k * 45})"/>`).join('')}
+      <circle r="15" fill="url(#rlGold)" stroke="#5a3a08" stroke-width="1.5"/><circle r="5" fill="#fff6c2"/>
+    </g>
+    <g class="orbit" id="rlOrbit" style="transform:rotate(${rlDeg.ball}deg)"><g class="drop" id="rlDrop" style="transform:translateY(-78px)">
+      <circle r="4.6" fill="#fdfdfd" stroke="#999" stroke-width=".6"/><circle r="1.6" cx="-1.4" cy="-1.4" fill="#fff"/></g></g>
+  </svg>`;
+}
+
+function rlBoardHTML(w) {
+  const st = RLS();
+  let h = '';
+  for (const b of w.bets) {
+    if (b.kind === 'straight' && !b.zero) {
+      const n = b.numbers[0], c = ROULETTE.colorOf(n);
+      h += `<div class="rl-cell" data-rl="${b.id}" data-num="${n}" style="left:${pctX(b.x - 0.5)};top:${pctY(b.y - 0.5)};width:${pctX(1)};height:${pctY(1)}"><span class="n ${c}">${n}</span></div>`;
+    } else if (b.kind === 'straight') {
+      const n = b.numbers[0], tall = w.id === 'american' ? 1.5 : 3, top = w.id === 'american' ? (n === ROULETTE.DZ ? 0 : 1.5) : 0;
+      h += `<div class="rl-cell zero" data-rl="${b.id}" data-num="${n}" style="left:0;top:${pctY(top)};width:${pctX(1)};height:${pctY(tall)}">${ROULETTE.label(n)}</div>`;
+    } else if (b.box) {
+      const [x, y, bw, bh] = b.box;
+      const inner = b.kind === 'red' ? '<span class="dia" style="background:#b5141c"></span>' : b.kind === 'black' ? '<span class="dia" style="background:#121212;outline:1px solid #555"></span>' : b.text;
+      h += `<div class="rl-cell out" data-rl="${b.id}" style="left:${pctX(x)};top:${pctY(y)};width:${pctX(bw)};height:${pctY(bh)}">${inner}</div>`;
+    }
+  }
+  for (const b of w.bets) {
+    if (b.kind === 'straight' || b.box) continue;
+    h += `<div class="rl-hot" data-rl="${b.id}" title="${ROULETTE.KIND_NAME[b.kind]} ${b.numbers.map(ROULETTE.label).join('-')} (${b.pays}:1)" style="left:${pctX(b.x)};top:${pctY(b.y)}"></div>`;
+  }
+  h += '<div id="rlChipLayer"></div>';
+  return h;
+}
+
+/** Chips on the layout: the bets you're building, or the spin just settled. */
+function rlDrawChips() {
+  const w = rlW(), st = RLS();
+  const show = rlLastRes && !rlTotal(st.bets) ? rlLastRes : null;
+  const bets = show ? Object.fromEntries(show.lines.map(l => [l.id, l.amount])) : st.bets;
+  $('rlChipLayer').innerHTML = Object.entries(bets).map(([id, amt]) => {
+    const b = w.betById[id]; if (!b) return '';
+    const line = show && show.lines.find(l => l.id === id);
+    const cls = line ? (line.win ? ' win' : ' lost') : '';
+    const lbl = amt >= 10000 ? Math.round(amt / 1000) + 'k' : amt >= 1000 ? (amt / 1000).toFixed(amt % 1000 ? 1 : 0) + 'k' : amt;
+    return `<div class="rl-chip${cls}" style="left:${pctX(b.x)};top:${pctY(b.y)};--cc:${rlChipColor(amt)}" title="${ROULETTE.KIND_NAME[b.kind]}: ${amt}">${lbl}</div>`;
+  }).join('');
+  $('rlTotal').textContent = rlTotal(st.bets).toLocaleString();
+}
+
+function rlRender() {
+  const w = rlW(), st = RLS();
+  $('rlWheels').innerHTML = ROULETTE.WHEEL_IDS.map(id => `<button data-rlw="${id}" class="${id === st.wheel ? 'on' : ''}">${ROULETTE.WHEELS[id].name} &middot; ${(-100 * ROULETTE.betReturn(ROULETTE.WHEELS[id], ROULETTE.WHEELS[id].betById['red:' + [...ROULETTE.RED].sort((a, b) => a - b).join('-')])).toFixed(2)}%</button>`).join('');
+  $('rlWheelBox').innerHTML = rlWheelSVG(w);
+  $('rlBoard').innerHTML = rlBoardHTML(w);
+  $('rlChips').innerHTML = RL_CHIPS.map(v => `<button class="rl-chipbtn${v === st.chip ? ' on' : ''}" data-rlchip="${v}" style="--cc:${RL_CHIP_COLOR[v]}">${v >= 1000 ? v / 1000 + 'k' : v}</button>`).join('');
+  $('rlLimit').textContent = `min ${ROULETTE.RULES.minSpin} a spin · max ${econMaxBet().toLocaleString()} per bet`;
+  const last = st.recent[0];
+  $('rlResult').className = 'rl-result ' + (last != null ? ROULETTE.colorOf(last) : 'none');
+  $('rlResult').textContent = last != null ? ROULETTE.label(last) : '—';
+  rlTote(); rlDrawChips(); rlOdds(); rlStats();
+  if (!$('rlMsg').textContent) $('rlMsg').textContent = 'Pick a chip, click the layout to bet, then spin.';
+}
+
+function rlTote() {
+  $('rlTote').innerHTML = RLS().recent.slice(0, 15).map(n => `<span class="${ROULETTE.colorOf(n)}">${ROULETTE.label(n)}</span>`).join('') ||
+    '<span class="sub" style="color:var(--text-dim)">No spins yet.</span>';
+}
+
+function rlOdds() {
+  const w = rlW(), seen = new Set(), rows = [];
+  for (const b of w.bets) {
+    if (seen.has(b.kind)) continue; seen.add(b.kind);
+    rows.push(`<tr class="stat-row"><td>${ROULETTE.KIND_NAME[b.kind]} (${b.numbers.length} number${b.numbers.length > 1 ? 's' : ''})</td>` +
+      `<td>${b.pays}:1 &middot; edge ${(-100 * ROULETTE.betReturn(w, b)).toFixed(4)}%</td></tr>`);
+  }
+  rows.push(`<tr><td colspan="2" class="sub" style="padding-top:8px">Exact: ${w.pockets} equally likely pockets, so a bet covering k numbers that pays N:1 returns (N+1)k/${w.pockets} per chip. ` +
+    'Each spin draws one pocket with crypto.getRandomValues. The wheel animation only shows the result.</td></tr>');
+  $('rlOdds').innerHTML = rows.join('');
+}
+
+function rlStats() {
+  const t = RLS().stats, w = rlW(), pct = x => (100 * x).toFixed(2) + '%';
+  const rows = [['Spins', t.spins.toLocaleString()], ['Wagered', t.wagered.toLocaleString()],
+    ['Net', `<span class="${t.net > 0 ? 'win' : t.net < 0 ? 'lost' : ''}">${t.net >= 0 ? '+' : ''}${t.net.toLocaleString()}</span>`]];
+  if (t.wagered) {
+    rows.push(['Observed return', `${pct(t.returned / t.wagered)} <span style="color:#667">vs ${pct(1 + t.expNet / t.wagered)} exact for your bets</span>`]);
+    rows.push(['Expected net for your bets', Math.round(t.expNet).toLocaleString()]);
+  }
+  if (t.spins) {
+    const g = w.id === 'american' ? 2 : 1;
+    rows.push(['Red / black / green', `${t.red} / ${t.black} / ${t.green} <span style="color:#667">vs ${pct(18 / w.pockets)} / ${pct(18 / w.pockets)} / ${pct(g / w.pockets)}</span>`]);
+  }
+  $('rlStats').innerHTML = rows.map(([a, b]) => `<tr class="stat-row"><td>${a}</td><td>${b}</td></tr>`).join('');
+}
+
+function rlAdd(id, mult) {
+  const st = RLS(), w = rlW(), b = w.betById[id];
+  if (!b || animBusy() || (online() && ON.busy)) return;
+  if (rlLastRes && !rlTotal(st.bets)) { rlLastRes = null; rlClearWon(); }
+  const add = st.chip * (mult || 1);
+  if ((st.bets[id] || 0) + add > econMaxBet()) { $('rlMsg').textContent = `Your table limit is ${econMaxBet().toLocaleString()} per bet. Rank up to raise it.`; return; }
+  if (rlTotal(st.bets) + add > bankroll()) { $('rlMsg').innerHTML = 'Not enough chips for that.' + (online() ? onBrokeHint() : econRescueHint()); return; }
+  rlUndoStack.push(JSON.stringify(st.bets));
+  st.bets[id] = (st.bets[id] || 0) + add;
+  $('rlMsg').textContent = `${ROULETTE.KIND_NAME[b.kind]} ${b.kind === 'straight' || b.numbers.length <= 6 ? b.numbers.map(ROULETTE.label).join('-') + ' ' : ''}pays ${b.pays}:1.`;
+  sfx('chip');
+  rlDrawChips();
+}
+
+function rlClearWon() {
+  if (!document.querySelectorAll) return;
+  document.querySelectorAll('.rl-cell.won').forEach(e => e.classList.remove('won'));
+}
+
+/** Spin: offline here; online through the server (onRlSpin). */
+function rlSpinClick() {
+  if (animBusy()) return;
+  if (online()) onRlSpin(); else rlSpin();
+}
+
+function rlCheck(st, w) {
+  const err = ROULETTE.betError(w, st.bets);
+  if (err) { $('rlMsg').textContent = err; return false; }
+  if (Math.max(...Object.values(st.bets)) > econMaxBet()) { $('rlMsg').textContent = `Your table limit is ${econMaxBet().toLocaleString()} per bet.`; return false; }
+  if (rlTotal(st.bets) > bankroll()) { $('rlMsg').innerHTML = 'Not enough chips for those bets.' + (online() ? onBrokeHint() : econRescueHint()); return false; }
+  return true;
+}
+
+/** Offline spin: ROULETTE.spin() draws, settle() pays, this moves the browser's chips. */
+function rlSpin() {
+  const st = S.rl, w = rlW();
+  if (!rlCheck(st, w)) return;
+  const res = ROULETTE.settle(w, st.bets, ROULETTE.spin(w, randInt));
+  S.chips += res.returned - res.wagered;
+  st.recent = [res.pocket, ...st.recent].slice(0, 20);
+  rlRecord(st, w, res);
+  const econLines = econAfterRound(ROULETTE.facts(res));   // reads the result; can't change it
+  save();
+  rlShow(w, res, econLines);
+}
+
+/** Display stats for one settled spin (both modes). No chips move here. */
+function rlRecord(st, w, res) {
+  const t = st.stats;
+  t.spins++; t.wagered += res.wagered; t.returned += res.returned; t.net += res.net;
+  for (const l of res.lines) t.expNet += l.amount * ROULETTE.betReturn(w, w.betById[l.id]);
+  if (res.net > 0) t.wins++;
+  t[res.color]++;
+  st.history.push({ t: Date.now(), wheel: w.id, pocket: res.pocket, wagered: res.wagered, returned: res.returned });
+  if (st.history.length > 2000) st.history.splice(0, st.history.length - 2000);
+  st.lastBets = Object.assign({}, st.bets);
+  st.bets = {};
+  rlUndoStack = [];
+}
+
+/** Turn the wheel to the pocket already drawn, then show what it paid. Display only. */
+function rlShow(w, res, econLines) {
+  rlLastRes = res;
+  rlClearWon();
+  bankHold(bankroll() - res.returned);
+  const i = w.order.indexOf(res.pocket), a = 360 / w.pockets;
+  // Where it stops is the result; how many turns it takes is decoration (Math.random is fine here).
+  const W = rlDeg.wheel + 360 * 3 + Math.random() * 360;
+  const target = ((W + i * a) % 360 + 360) % 360;
+  const base = rlDeg.ball - 360 * 5, k = (((base - target) % 360) + 360) % 360;
+  const B = base - k;
+  rlDeg = { wheel: W, ball: B };
+  const rotor = $('rlRotor'), orbit = $('rlOrbit'), drop = $('rlDrop');
+  const T = ANIM.off ? 0 : 5200;
+  if (rotor.style) {
+    rotor.style.transition = T ? 'transform 5200ms cubic-bezier(.12,.6,.2,1)' : 'none';
+    orbit.style.transition = T ? 'transform 4700ms cubic-bezier(.18,.55,.25,1)' : 'none';
+    drop.style.transition = 'none';
+    drop.style.transform = 'translateY(-90px)';
+    void (rlBoardEl() || {}).offsetWidth;
+    rotor.style.transform = `rotate(${W}deg)`;
+    orbit.style.transform = `rotate(${B}deg)`;
+    drop.style.transition = T ? 'transform 700ms cubic-bezier(.3,1.6,.5,1) 3900ms' : 'none';
+    drop.style.transform = 'translateY(-78px)';
+  }
+  if (T) { sfx('spin', 0, 4400); sfx('reelStop', 4600); }
+  animHold(T);
+  $('rlResult').className = 'rl-result none';
+  $('rlResult').textContent = '…';
+  $('rlMsg').textContent = 'No more bets.';
+  rlDrawChips();
+  const reveal = () => {
+    if (rlLastRes !== res) return;
+    $('rlResult').className = 'rl-result ' + res.color;
+    $('rlResult').textContent = res.label;
+    if (document.querySelectorAll) document.querySelectorAll(`.rl-cell[data-num="${res.pocket}"]`).forEach(e => e.classList.add('won'));
+    const wins = res.lines.filter(l => l.win);
+    const lines = wins.map(l => { const b = w.betById[l.id]; return `${ROULETTE.KIND_NAME[b.kind]}${b.numbers.length <= 6 ? ' ' + b.numbers.map(ROULETTE.label).join('-') : ''} ${b.pays}:1 +${(l.returned - l.amount).toLocaleString()}`; });
+    let msg = `<strong>${res.label} ${res.color.toUpperCase()}</strong> &nbsp; ` + (lines.length ? lines.join(' &nbsp;|&nbsp; ') : 'No winning bets.') +
+      `<br><strong class="${res.net > 0 ? 'win' : res.net < 0 ? 'lost' : 'pushc'}">Net ${res.net >= 0 ? '+' : ''}${res.net.toLocaleString()}</strong>`;
+    if (econLines.length) msg += '<br>' + econLines.join('<br>');
+    msg += online() ? onBrokeHint() : econRescueHint();
+    $('rlMsg').innerHTML = msg;
+    rlTote(); rlDrawChips(); rlStats();
+    if (res.net > 0) sfx('win', 0, res.net >= 5 * res.wagered ? 2 : 1);
+    if (res.net >= 15 * res.wagered && res.net >= 100) bigHit('Big win', res.net, `${res.label} ${res.color} · roulette`, null);
+  };
+  if (T) setTimeout(reveal, T + 80); else reveal();
+  bankRelease();
+}
+const rlBoardEl = () => $('rlBoard');
+
+/* ===========================================================================
    PLAYERS: leaderboard and player cards (online; numbers from the server)
    ---------------------------------------------------------------------------
    Every number here is computed by the server from records only it writes
@@ -2782,6 +3153,10 @@ const LB_BOARDS = [
     note: 'Game results only (bets and payouts, jackpots included) since Monday midnight ET. Wheels, quests and the shop don\'t count.' },
   { id: 'level', name: 'Level', val: p => p.xp, fmt: (v, p) => 'Lv ' + p.level, note: 'XP comes from time at the tables, not bet size.' },
   { id: 'best', name: 'Biggest win', val: p => p.bestWin, fmt: v => v.toLocaleString(), note: 'Best single round or spin, net of its bet.' },
+  { id: 'gains', name: 'All-time gains', val: p => p.gains || 0, fmt: v => '+' + v.toLocaleString(),
+    note: 'Everything won on winning rounds and spins, all time (each round counted net of its own bet).' },
+  { id: 'losses', name: 'All-time losses', val: p => p.losses || 0, fmt: v => '-' + v.toLocaleString(),
+    note: 'Everything lost on losing rounds and spins, all time. Biggest first.' },
   { id: 'jackpots', name: 'Jackpots', val: p => p.jpTotal, fmt: (v, p) => p.jpCount ? `${v.toLocaleString()} (${p.jpCount})` : '0', note: 'Linked progressive jackpots won.' },
 ];
 const LB = { board: 'worth', data: null, at: 0, loading: false, msg: '', open: null };
@@ -2826,7 +3201,7 @@ function lbRender() {
     return `<div class="lb-row${p.mine ? ' me' : ''}" data-lbp="${i}"><div class="lb-pos p${i + 1}">${i < 3 ? medal[i] : i + 1}</div>` +
       `${avatarHTML(p.avatar, p.equipped.frame)}<div class="lb-who"><strong>${escHTML(p.name)}${p.mine ? ' <span class="sub">(you)</span>' : ''}</strong>` +
       `<span class="sub">${p.title ? escHTML(p.title) + ' &middot; ' : ''}Lv ${p.level} ${escHTML(p.tier)}</span></div>` +
-      `<div class="lb-val${v < 0 ? ' neg' : ''}">${b.fmt(v, p)}</div></div>`;
+      `<div class="lb-val${v < 0 || (b.id === 'losses' && v > 0) ? ' neg' : ''}">${b.fmt(v, p)}</div></div>`;
   }).join('') || '<p class="sub">No players yet.</p>';
   const ends = LB.data.weekEnds ? ` The week resets in ${fmtWait(Date.parse(LB.data.weekEnds) - Date.now())}.` : '';
   $('lbNote').innerHTML = `${b.note}${LB.board === 'week' ? ends : ''} ${rows.length} player${rows.length === 1 ? '' : 's'}. ` +
@@ -2848,6 +3223,8 @@ function lbCard(i) {
     `${p.joined ? ' &middot; playing since ' + new Date(p.joined).toLocaleDateString() : ''}</div></div></div>` +
     '<div class="pstats">' + stat('Net worth', p.worth.toLocaleString()) + stat('This week', (p.weekNet > 0 ? '+' : '') + p.weekNet.toLocaleString()) +
     stat('Biggest win', p.bestWin.toLocaleString()) + stat('Jackpots', p.jpCount ? `${p.jpTotal.toLocaleString()} (${p.jpCount})` : 'none yet') +
+    stat('All-time gains', '+' + (p.gains || 0).toLocaleString()) + stat('All-time losses', '-' + (p.losses || 0).toLocaleString()) +
+    stat('All-time net', ((p.allNet || 0) > 0 ? '+' : '') + (p.allNet || 0).toLocaleString()) +
     stat('XP', p.xp.toLocaleString()) + '</div>' +
     `<div class="pcos">Table: <span><span class="sw" style="background:radial-gradient(ellipse at 50% 0%, ${(felt.colors || ['#0f4034'])[0]}, ${(felt.colors || ['', '#0a2c24'])[1]})"></span>${escHTML(felt.name || '')}</span>` +
     `<span>Cards: <span class="sw" style="background:repeating-linear-gradient(45deg, ${(back.colors || ['#2a4d8f'])[0]} 0 5px, ${(back.colors || ['', '#1e3a6e'])[1]} 5px 10px)"></span>${escHTML(back.name || '')}</span>` +
@@ -3411,9 +3788,10 @@ function onSave() {
   const keep = ts => ({ bet: ts.bet, side: ts.side, stats: ts.stats, history: ts.history.slice(-200) });
   try {
     const tcp = { bets: ON.tcp.bets, stats: ON.tcp.stats, history: ON.tcp.history.slice(-200) };
+    const rl = { wheel: ON.rl.wheel, chip: ON.rl.chip, lastBets: ON.rl.lastBets, stats: ON.rl.stats, history: ON.rl.history.slice(-200) };
     const slots = { machine: ON.slots.machine, m: {} };
     for (const id of SLOTS.MACHINE_IDS) { const x = ON.slots.m[id]; slots.m[id] = { level: x.level, stats: x.stats, history: x.history.slice(-200) }; }
-    localStorage.setItem(ONLINE_KEY, JSON.stringify({ user: ON.user, on: ON.on, bj: keep(ON.ts.bj), fb: keep(ON.ts.fb), tcp, slots }));
+    localStorage.setItem(ONLINE_KEY, JSON.stringify({ user: ON.user, on: ON.on, bj: keep(ON.ts.bj), fb: keep(ON.ts.fb), tcp, slots, rl }));
   } catch (e) { /* storage blocked: display stats just won't survive a reload */ }
 }
 
@@ -3453,7 +3831,11 @@ async function onBoot() {
          syncedDay: '' };   // last day we asked the server to roll the quests over
   for (const t of ONLINE_GAMES) {
     const b = blankBj();
-    if (mine[t]) { b.bet = mine[t].bet || b.bet; b.side = mine[t].side || b.side; b.stats = mine[t].stats || b.stats; b.history = mine[t].history || []; }
+    if (mine[t]) {
+      b.bet = mine[t].bet || b.bet; b.side = Object.assign(b.side, mine[t].side || {});
+      if (mine[t].stats) { const sd = Object.assign(b.stats.side, mine[t].stats.side || {}); b.stats = Object.assign(b.stats, mine[t].stats); b.stats.side = sd; }
+      b.history = mine[t].history || [];
+    }
     b.seq = 0;
     ON.ts[t] = b;
   }
@@ -3464,6 +3846,9 @@ async function onBoot() {
              history: (mine.tcp && mine.tcp.history) || [] };
   // Slots: display stats and bet sizes from this browser; the feature state comes from the server.
   ON.slots = mergeSlots(mine.slots);
+  ON.rl = Object.assign(blankRl(), mine.rl || {}, { bets: {}, recent: [], seq: { american: 0, european: 0 } });
+  ON.rl.stats = Object.assign(blankRl().stats, (mine.rl && mine.rl.stats) || {});
+  if (!Array.isArray(ON.rl.history)) ON.rl.history = [];
   for (const id of SLOTS.MACHINE_IDS) { ON.slots.m[id].free = null; ON.slots.m[id].last = null; ON.slots.m[id].seq = 0; }
   try {
     const d = await onCall({ op: 'state' });
@@ -3472,6 +3857,7 @@ async function onBoot() {
     for (const t of ONLINE_GAMES) onApply(t, d.tables[t]);
     if (d.tables.tcp) onTcpApply(d.tables.tcp);
     for (const id of SLOTS.MACHINE_IDS) if (d.tables['slot_' + id]) onSlotApply(id, d.tables['slot_' + id]);
+    for (const wid of ROULETTE.WHEEL_IDS) if (d.tables['rl_' + wid]) onRlApply(wid, d.tables['rl_' + wid]);
     onJackpot(d);
     econAnnounce(d.events || []);   // e.g. yesterday's unclaimed quests, vault interest
   } catch (e) {
@@ -3700,6 +4086,40 @@ async function onTcpSend(body) {
   player = T.last.player;
   dealer = T.last.dealer;
   tcpSettled(T.last.result, T.last.bets, T.last.raised, econAnnounce(events));
+}
+
+/* ---------- roulette online ---------- */
+
+function onRlApply(wheel, view) {
+  ON.rl.seq[wheel] = view.seq;
+  if (wheel === ON.rl.wheel && view.recent) ON.rl.recent = view.recent.slice();
+  ON.rl.recentBy = ON.rl.recentBy || {};
+  ON.rl.recentBy[wheel] = view.recent || [];
+}
+
+/** One online spin: the server draws the pocket and pays (roulette-core.js); the page draws it. */
+async function onRlSpin() {
+  const st = ON.rl, w = rlW(), wheel = st.wheel;
+  if (ON.busy || !rlCheck(st, w)) return;
+  ON.busy = true;
+  let d = null;
+  try { d = await onCall({ op: 'deal', table: 'rl_' + wheel, seq: st.seq[wheel], bets: st.bets }); }
+  catch (e) {
+    try { const s2 = await onCall({ op: 'state' }); if (s2.ok) { ON.wallet = s2.wallet; onRlApply(wheel, s2.tables['rl_' + wheel]); } } catch (e2) { /* still offline */ }
+    d = { ok: false, message: 'Connection problem. Your chips are where the server says; try again.' };
+  }
+  if (!ON) return;
+  ON.busy = false;
+  if (d.error === 'signed_out') { $('rlMsg').textContent = d.message; onStop(); return; }
+  if (d.wallet) ON.wallet = d.wallet;
+  if (d.view) onRlApply(wheel, d.view);
+  econRenderHeader();
+  if (!d.ok) { $('rlMsg').textContent = d.message || 'The server refused that.'; renderBank(); return; }
+  const res = d.view.last;
+  rlRecord(st, w, res);
+  onSave();
+  if (S.game !== 'roulette' || !online() || ON.rl.wheel !== wheel) { renderBank(); return; }
+  rlShow(w, res, econAnnounce(d.events || []));
 }
 
 /* ---------- slots online ---------- */
@@ -4262,7 +4682,7 @@ function econRenderRewards() {
   const L = S.econ.ledger, rec = econReconcile();
   $('ledgerTable').innerHTML =
     `<tr class="stat-row"><td>Opening balance</td><td>${L.opening.toLocaleString()}</td></tr>` +
-    row('Three Card Poker', S.stats.net) + row('Blackjack', S.bj.stats.net) + row('Free Bet', S.fb.stats.net) + row('Slots', slotsNet(S)) +
+    row('Three Card Poker', S.stats.net) + row('Blackjack', S.bj.stats.net) + row('Free Bet', S.fb.stats.net) + row('Slots', slotsNet(S)) + row('Roulette', S.rl.stats.net) +
     row('Bonus Wheel', L.bonusWheel) + row('Rescue Wheel', L.rescueWheel) + row('Quests', L.quests) +
     row('Event promos', L.promo) + row('Vault interest', L.interest) + row('Shop', L.shop) + (L.admin ? row('Admin adjustments', L.admin) : '') +
     (chipsInPlay(S) ? row('On the table right now', -chipsInPlay(S)) : '') +
@@ -4477,6 +4897,39 @@ if (typeof setInterval === 'function') {   // display timers (absent in some tes
   setInterval(jpTick, 120);
   setInterval(jpPoll, 15000);
 }
+
+/* ---------- roulette wiring ---------- */
+$('rlBoard').onclick = (e) => { const t = e.target && e.target.closest ? e.target.closest('[data-rl]') : null; if (t) rlAdd(t.dataset.rl); };
+$('rlChips').onclick = (e) => {
+  const t = e.target && e.target.closest ? e.target.closest('[data-rlchip]') : null;
+  if (!t) return;
+  RLS().chip = +t.dataset.rlchip; save(); if (online()) onSave(); rlRender();
+};
+$('rlWheels').onclick = (e) => {
+  const t = e.target && e.target.closest ? e.target.closest('[data-rlw]') : null;
+  if (!t || animBusy() || (online() && ON.busy) || t.dataset.rlw === RLS().wheel) return;
+  const st = RLS();
+  st.wheel = t.dataset.rlw; st.bets = {}; st.lastBets = {}; rlUndoStack = []; rlLastRes = null;
+  if (online() && ON.rl.recentBy) st.recent = (ON.rl.recentBy[st.wheel] || []).slice();
+  else if (!online()) st.recent = [];
+  $('rlMsg').textContent = '';
+  save(); if (online()) onSave(); rlRender();
+};
+$('rlSpin').onclick = () => rlSpinClick();
+$('rlClear').onclick = () => { if (animBusy()) return; rlUndoStack.push(JSON.stringify(RLS().bets)); RLS().bets = {}; rlDrawChips(); };
+$('rlUndo').onclick = () => { if (animBusy() || !rlUndoStack.length) return; RLS().bets = JSON.parse(rlUndoStack.pop()); rlDrawChips(); };
+$('rlRebet').onclick = () => {
+  const st = RLS();
+  if (animBusy() || !rlTotal(st.lastBets)) return;
+  rlUndoStack.push(JSON.stringify(st.bets)); st.bets = Object.assign({}, st.lastBets); rlLastRes = null; rlClearWon(); rlDrawChips();
+};
+$('rlDouble').onclick = () => {
+  const st = RLS();
+  if (animBusy() || !rlTotal(st.bets)) return;
+  const doubled = Object.fromEntries(Object.entries(st.bets).map(([k, v]) => [k, v * 2]));
+  if (Math.max(...Object.values(doubled)) > econMaxBet() || rlTotal(doubled) > bankroll()) { $('rlMsg').textContent = 'Can\'t double: over your limit or your chips.'; return; }
+  rlUndoStack.push(JSON.stringify(st.bets)); st.bets = doubled; rlDrawChips();
+};
 
 /* ---------- players wiring ---------- */
 $('lbTabs').onclick = (e) => {

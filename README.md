@@ -193,7 +193,11 @@ through saving (the vault), not handouts. Never through odds.
 - [x] Home tab, notifications (bell + toasts), quests claimed by hand
 - [x] Supabase: auth, server wallets + ledger, every game dealt on the server
 - [x] Leaderboard (Players tab): net worth, this week's winnings, level,
-      biggest win, jackpots, all computed server-side from the ledger
+      biggest win, all-time gains and losses, jackpots, all computed
+      server-side from the ledger
+- [x] Free Bet with the Pot of Gold side bet (house edge measured: 6.81%)
+- [x] Roulette: American and European wheels, every bet on a real layout,
+      exact odds, online and offline
 - [x] Profiles visible to friends: name, avatar, avatar frames (new shop
       cosmetic), title, felt and card back, on player cards. Cosmetic only.
 - [x] Slots: three machines (classic 3-reel, 20-line, 243-ways) with exact

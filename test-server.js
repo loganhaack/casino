@@ -30,6 +30,7 @@ const PLAY = require('./supabase/functions/play/logic.js');
 const TCP = require('./tcp-core.js');
 const SLOTS = require('./slots-core.js');
 const JACKPOT = require('./jackpot.js');
+const ROULETTE = require('./roulette-core.js');
 
 const ROUNDS = parseInt(process.argv[2], 10) || 20000;
 let pass = 0, fail = 0;
@@ -128,6 +129,9 @@ function memStore(opts) {
         econ: { xp: w.econ.xp, equipped: w.econ.equipped }, worth: w.chips + w.vault,
         week_net: mine.filter(r => r.at >= since).reduce((a, r) => a + r.amount, 0),
         best_win: Math.max(0, ...byRef.values()), jp_total: hits.reduce((a, h) => a + h.amount, 0), jp_count: hits.length,
+        gross_won: [...byRef.values()].filter(v => v > 0).reduce((a, v) => a + v, 0),
+        gross_lost: -[...byRef.values()].filter(v => v < 0).reduce((a, v) => a + v, 0),
+        all_net: [...byRef.values()].reduce((a, v) => a + v, 0),
         joined: '2026-11-15T00:00:00Z' });
     }
     return out;
@@ -253,7 +257,9 @@ async function main() {
       }
       const limit = s.wallet.rank.maxBet;
       const bet = Math.min(limit, 2 * (5 + Math.floor(rnd() * 40)));
-      const side = rnd() < 0.3 ? { perfectPairs: 2 * Math.floor(rnd() * 10) } : rnd() < 0.3 ? { twentyOnePlus3: 5 } : {};
+      // Each table's own side bets: Perfect Pairs / 21+3 at Blackjack, Pot of Gold at Free Bet.
+      const side = t === 'fb' ? (rnd() < 0.4 ? { potOfGold: 2 * Math.floor(rnd() * 10) } : {})
+        : rnd() < 0.3 ? { perfectPairs: 2 * Math.floor(rnd() * 10) } : rnd() < 0.3 ? { twentyOnePlus3: 5 } : {};
       let r = await PLAY.handle(st, 'p', { op: 'deal', table: t, seq: seq[t], bet, side }, { randInt });
       requests++;
       if (!r.ok) { ok(false, 'deal refused: ' + r.message); break; }
@@ -329,7 +335,7 @@ async function main() {
     const ri = seededInt(77);
     let seq = 0, done = null;
     for (let i = 0; i < 400 && !done; i++) {
-      let r = await call(st, c, { op: 'deal', table: i % 2 ? 'fb' : 'bj', seq: st.tables.get('u/' + (i % 2 ? 'fb' : 'bj'))?.seq || 0, bet: 20, side: { perfectPairs: 2 } }, ri);
+      let r = await call(st, c, { op: 'deal', table: i % 2 ? 'fb' : 'bj', seq: st.tables.get('u/' + (i % 2 ? 'fb' : 'bj'))?.seq || 0, bet: 20, side: i % 2 ? { potOfGold: 2 } : { perfectPairs: 2 } }, ri);
       const tb = r.table;
       while (r.view.round) {
         const full = st.tables.get('u/' + tb).round;
@@ -881,6 +887,77 @@ async function main() {
     report('free spins contribute nothing; reels identical with or without the pool; Lv1 vs Diamond identical incl. jackpots (hard rule 2)', f);
   }
 
+  section('roulette');
+  {
+    const f = fail, st = memStore();
+    await PLAY.handle(st, 'u', { op: 'state' });
+    const RED = 'red:' + [...ROULETTE.RED].sort((a, b) => a - b).join('-');
+    const spin = (t, bets, o) => PLAY.handle(st, 'u', Object.assign({ op: 'deal', table: t, seq: 0, bets }, o || {}));
+    const cases = [
+      ['rl_american', {}, 'bad_bet'], ['rl_american', { 'straight:17': 2 }, 'bad_bet'], ['rl_american', { 'straight:17': 2.5 }, 'bad_bet'],
+      ['rl_american', { 'straight:99': 5 }, 'bad_request'], ['rl_european', { 'straight:00': 5 }, 'bad_request'],
+      ['rl_american', [5], 'bad_request'], ['rl_american', { 'straight:17': 501 }, 'over_limit'],
+      ['rl_american', { 'straight:17': 500, [RED]: 500, 'straight:1': 5 }, 'not_enough_chips'],
+      ['rl_vegas', { 'straight:17': 5 }, 'bad_request'],
+    ];
+    for (const [t, b, code] of cases) {
+      const r = await spin(t, b);
+      ok(!r.ok && r.error === code, `${t} ${JSON.stringify(b)} should be ${code}, got ${r.error}`);
+    }
+    ok((await spin('rl_american', { 'straight:17': 5 }, { seq: 3 })).error === 'stale', 'stale seq refused');
+    ok((await PLAY.handle(st, 'u', { op: 'act', table: 'rl_american', seq: 0, action: 'hit' })).error === 'bad_request', 'no actions on a wheel');
+    ok(st.ledger.length === 1 && st.wallets.get('u').chips === 1000, 'refused spins wrote nothing');
+    report('validation: real bets only, minimum, whole chips, limit per bet, bankroll, wheel-specific (no 00 on European), stale', f);
+  }
+  {
+    const f = fail, st = memStore(), ri = seededInt(808);
+    await PLAY.handle(st, 'p', { op: 'state' });
+    const seq = { rl_american: 0, rl_european: 0 };
+    let net = 0;
+    for (let i = 0; i < 4000; i++) {
+      const t = i % 2 ? 'rl_european' : 'rl_american', w = ROULETTE.WHEELS[PLAY.RL_TABLES[t]];
+      const wl = st.wallets.get('p');
+      if (wl.chips < 600) await st.commit('p', wl.version, { chips: wl.chips + 5000, vault: 0, econ: wl.econ, ledger: [{ account: 'chips', amount: 5000, kind: 'quests' }] });
+      const bets = {};
+      for (let j = 0; j < 1 + ri(3); j++) { const b = w.bets[ri(w.bets.length)]; bets[b.id] = (bets[b.id] || 0) + 5 * (1 + ri(4)); }
+      const r = await PLAY.handle(st, 'p', { op: 'deal', table: t, seq: seq[t], bets }, { randInt: ri });
+      if (!r.ok) { ok(false, 'spin refused: ' + r.message); break; }
+      seq[t] = r.view.seq;
+      const res = r.view.last;
+      const again = ROULETTE.settle(w, bets, res.pocket);
+      ok(JSON.stringify(again) === JSON.stringify(res), 'server result == ROULETTE.settle on its pocket');
+      ok(r.view.recent[0] === res.pocket && r.view.recent.length <= 20, 'recent numbers board');
+      net += res.net;
+      const wc = st.wallets.get('p').chips;
+      ok(wc === st.ledgerSum('p'), 'chips == ledger');
+      if (fail - f > 20) break;
+    }
+    const games = st.ledger.filter(x => x.user === 'p' && /^rl_/.test(x.table_id || '') && (x.kind === 'bet' || x.kind === 'payout')).reduce((a, x) => a + x.amount, 0);
+    ok(games === net, 'roulette bet + payout rows == sum of spin nets');
+    report('fuzz: 4000 spins on both wheels, ledger identity every spin, result == ROULETTE.settle', f);
+  }
+  {
+    const f = fail;
+    async function run(xp, chips) {
+      const st = memStore();
+      await PLAY.handle(st, 'u', { op: 'state' });
+      const w = st.wallets.get('u');
+      await st.commit('u', w.version, { chips, vault: 0, econ: Object.assign(w.econ, { xp }), ledger: chips !== w.chips ? [{ account: 'chips', amount: chips - w.chips, kind: 'quests' }] : [] });
+      const ri = seededInt(4040), out = [];
+      let seq = 0;
+      for (let i = 0; i < 300; i++) {
+        const r = await PLAY.handle(st, 'u', { op: 'deal', table: 'rl_american', seq, bets: { 'straight:17': 5 } }, { randInt: ri });
+        seq = r.view.seq; out.push(r.view.last.pocket);
+      }
+      return out;
+    }
+    const ri = seededInt(4040), direct = Array.from({ length: 300 }, () => ROULETTE.spin(ROULETTE.WHEELS.american, ri));
+    const a = await run(0, 5000), b = await run(500000, 200000);
+    ok(a.every((x, i) => x === direct[i]), 'server pockets == ROULETTE.spin driven directly');
+    ok(a.every((x, i) => x === b[i]), 'Lv1 and Diamond got different pockets');
+    report('same pockets as ROULETTE.spin (the page\'s path); Lv1 vs Diamond identical (hard rule 2)', f);
+  }
+
   section('leaderboard');
   {
     const f = fail, st = memStore({ jackpot: true }), ri = seededInt(12), jri = seededInt(13);
@@ -914,6 +991,9 @@ async function main() {
     ok(by.Sam.mine && !by.Alex.mine && !by.Kai.mine, 'mine marks the caller only');
     ok(!/"user_id"|"u1"|"u2"|"u3"/.test(JSON.stringify(r)), 'no user id in the board');
     ok(by.Alex.level >= 1 && by.Alex.tier && by.Alex.bestWin >= 0, 'rank and best win present');
+    ok(by.Alex.allNet === net('u1') && by.Alex.gains - by.Alex.losses === by.Alex.allNet && by.Alex.gains > 0 && by.Alex.losses > 0,
+      'all-time gains - losses = all-time net = every game result');
+    ok(by.Kai.gains === 0 && by.Kai.losses === 0, 'grants and shop are neither gains nor losses');
     const bare = await PLAY.handle(memStore(), 'x', { op: 'leaderboard' });
     ok(bare.ok && Array.isArray(bare.board.players), 'a store with no players gives an empty board');
     const off = { wallet: async () => null };
@@ -935,7 +1015,7 @@ async function main() {
       let seq = { bj: 0, fb: 0 };
       for (let i = 0; i < 400; i++) {
         const t = i % 2 ? 'fb' : 'bj';
-        let r = await PLAY.handle(st, 'u', { op: 'deal', table: t, seq: seq[t], bet: 20, side: { perfectPairs: 2 } }, { randInt: ri });
+        let r = await PLAY.handle(st, 'u', { op: 'deal', table: t, seq: seq[t], bet: 20, side: t === 'fb' ? { potOfGold: 2 } : { perfectPairs: 2 } }, { randInt: ri });
         seq[t] = r.view.seq;
         while (r.view.round) {
           const a = r.view.legal.stand ? (rnd() < 0.5 ? 'hit' : 'stand') : 'decline';

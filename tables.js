@@ -33,18 +33,24 @@
     bjHouseEdge: 0.0043,
 
     // Free Bet Blackjack: Wizard of Odds' standard rules (6 decks, H17, resplit
-    // Aces, free doubles on hard 9-11, free splits except tens, dealer 22
-    // pushes). Same re-measure rule as above.
+    // Aces, free doubles on hard 9-11 incl. after splits, free splits and
+    // resplits except tens, dealer 22 pushes). Same re-measure rule as above.
+    // Side bet: Pot of Gold only, as the owner's casino spreads it (one gold
+    // coin per free double / free split; pays by coins).
     freeBet: {
       decks: 6, penetration: 0.75, hitSoft17: true, blackjackPays: [3, 2],
       insurance: true, doubleOn: 'any', doubleAfterSplit: true, maxHands: 4,
       resplitAces: true, hitSplitAces: false, betUnit: 2,
       push22: true, freeDoubles: true, freeSplits: true,
-      perfectPairs:   { perfect: 25, colored: 12, mixed: 6 },
-      twentyOnePlus3: { suitedTrips: 100, straightFlush: 40, trips: 30, straight: 10, flush: 5 },
+      potOfGold: { coins1: 3, coins2: 12, coins3: 30, coins4: 50, coins5: 100, coins6: 100, coins7: 100 },
     },
     // Pooled over 120M simulated rounds in two runs: ~1.04%. Wizard of Odds: 1.04%.
     fbHouseEdge: 0.0104,
+    // Pot of Gold house edge with the Free Bet basic-strategy chart. It depends
+    // on play (coins come from free doubles/splits), so it is measured, not
+    // enumerated: 40M rounds in four runs, 6.81% +/- 0.05% (2026-11-17). The
+    // payout harness fails if it drifts more than 4 SE from what it measures.
+    fbPotOfGoldEdge: 0.0681,
 
     bjMinBet: 10,
     bjBetStep: 10,

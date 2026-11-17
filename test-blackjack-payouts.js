@@ -85,7 +85,7 @@ const sandbox = {
   ECON: require('./economy.js'),
   TABLE_RULES: require('./tables.js'),   // index.html gets this from <script src="tables.js">
   TCP: require('./tcp-core.js'),         // index.html gets this from <script src="tcp-core.js">
-  SLOTS: require('./slots-core.js'), SLOT_ART: require('./slots-art.js'),
+  SLOTS: require('./slots-core.js'), SLOT_ART: require('./slots-art.js'), ROULETTE: require('./roulette-core.js'),
 };
 sandbox.globalThis = sandbox;
 
@@ -307,7 +307,7 @@ const matches = (rules, ref) => Object.keys(ref).every(k => rules[k] === ref[k])
   console.log(`\n[D] Side bets: ${SIDE_N.toLocaleString()} rounds per table (basic strategy, real shoe + cut card) vs exact`);
   for (const t of TABLES) {
     const rules = H.BJ_TABLES[t].rules;
-    const kinds = Object.keys(BJ.SIDE_BETS).filter(k => rules[k]);
+    const kinds = BJ.DEALT_SIDE_BETS.filter(k => rules[k]);   // decided by the deal: exact
     if (!kinds.length) continue;
     const obs = Object.fromEntries(kinds.map(k => [k, {}]));
     const sum = Object.fromEntries(kinds.map(k => [k, [0, 0]]));
@@ -339,6 +339,30 @@ const matches = (rules, ref) => Object.keys(ref).every(k => rules[k] === ref[k])
       const label = `${H.BJ_TABLES[t].name}, ${k === 'perfectPairs' ? 'Perfect Pairs' : '21+3'}`;
       console.log(`  ${label.padEnd(38)} categories chi2 ${chi.toFixed(1).padStart(5)}  df ${cells - 1}  p = ${p.toFixed(4)}  ${verdict(p > 0.001)}`);
       console.log(`  ${''.padEnd(38)} return ${pct(mean, 2)} ± ${pct(se, 2)} vs exact ${pct(exactRet, 4)}  ${verdict(okRet)}`);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // E. Pot of Gold (decided by play): measured return vs the displayed edge
+  // -------------------------------------------------------------------------
+  {
+    const POT_N = 2000000;
+    console.log(`\n[E] Pot of Gold: ${POT_N.toLocaleString()} rounds, Free Bet basic strategy, vs the displayed edge`);
+    for (const t of TABLES) {
+      const rules = H.BJ_TABLES[t].rules;
+      if (!rules.potOfGold) continue;
+      let shoe = BJ.newShoe(rules), s1 = 0, s2 = 0;
+      for (let i = 0; i < POT_N; i++) {
+        if (BJ.needsShuffle(shoe)) shoe = BJ.newShoe(rules);
+        const r = BJ.startRound(shoe, 10, rules, { side: { potOfGold: 2 } });
+        while (r.phase !== 'done') BJ.act(r, shoe, BJ.basicStrategy(r));
+        const p = r.side.potOfGold, u = (p.returned - p.bet) / p.bet;
+        s1 += u; s2 += u * u;
+      }
+      const mean = s1 / POT_N, se = Math.sqrt((s2 / POT_N - mean * mean) / POT_N);
+      const shown = -H.RULES.fbPotOfGoldEdge, okE = Math.abs(mean - shown) < 4 * se;
+      if (!okE) allPass = false;
+      console.log(`  ${H.BJ_TABLES[t].name.padEnd(38)} return ${pct(mean, 2)} ± ${pct(se, 2)} vs displayed ${pct(shown, 2)}  ${verdict(okE)}`);
     }
   }
 

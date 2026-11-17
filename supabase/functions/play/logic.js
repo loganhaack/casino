@@ -38,11 +38,12 @@
       require('../_shared/tables.js'),
       require('../_shared/tcp-core.js'),
       require('../_shared/slots-core.js'),
-      require('../_shared/jackpot.js'));
+      require('../_shared/jackpot.js'),
+      require('../_shared/roulette-core.js'));
   } else {
-    root.PLAY = factory(root.BJ, root.ECON, root.TABLE_RULES, root.TCP, root.SLOTS, root.JACKPOT);
+    root.PLAY = factory(root.BJ, root.ECON, root.TABLE_RULES, root.TCP, root.SLOTS, root.JACKPOT, root.ROULETTE);
   }
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (BJ, ECON, TABLE_RULES, TCP, SLOTS, JACKPOT) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (BJ, ECON, TABLE_RULES, TCP, SLOTS, JACKPOT, ROULETTE) {
   'use strict';
 
   /** Online tables. Same rules objects the page builds (BJ_TABLES). */
@@ -53,8 +54,11 @@
   /** Slot machines: one table each, 'slot_<machine id>'. */
   const SLOT_TABLES = SLOTS.MACHINE_IDS.map(id => 'slot_' + id);
   const isSlot = (t) => SLOT_TABLES.includes(t);
-  /** Every online table: the blackjack tables above, Three Card Poker, the slots. */
-  const TABLE_IDS = [...Object.keys(TABLES), 'tcp', ...SLOT_TABLES];
+  /** Roulette wheels: one table each. */
+  const RL_TABLES = { rl_american: 'american', rl_european: 'european' };
+  const isRoulette = (t) => t in RL_TABLES;
+  /** Every online table: the blackjack tables above, Three Card Poker, the slots, roulette. */
+  const TABLE_IDS = [...Object.keys(TABLES), 'tcp', ...SLOT_TABLES, ...Object.keys(RL_TABLES)];
   const SIDE_KEYS = Object.keys(BJ.SIDE_BETS);
   const ACTIONS = ['insure', 'decline', 'hit', 'stand', 'double', 'split'];
   const TCP_ACTIONS = ['play', 'fold'];
@@ -107,6 +111,8 @@
     const r = ts.round;
     // A slot table holds no secret: the next spin isn't decided until it's played.
     if (isSlot(t)) return { seq: ts.seq, rounds: ts.n, free: ts.free || null, last: ts.last || null };
+    // Neither does a roulette wheel: the pocket is drawn when the bets are in.
+    if (isRoulette(t)) return { seq: ts.seq, rounds: ts.n, last: ts.last || null, recent: ts.recent || [] };
     if (t === 'tcp') {
       return {
         seq: ts.seq,
@@ -313,6 +319,34 @@
     if (res.cost) turn.ev.push(...ECON.afterRound(a, SLOTS.facts(res, m), turn.now));
   }
 
+  /* ---------------------------------------------------------- roulette -- */
+
+  // One request = one spin: the bets come in, ROULETTE.spin() draws the
+  // pocket, ROULETTE.settle() pays. Nothing waits between requests.
+  function rlDeal(turn, t, req, randInt) {
+    const w = ROULETTE.WHEELS[RL_TABLES[t]], ts = turn.ts, a = turn.acct;
+    const err = ROULETTE.betError(w, req.bets);
+    if (err) refuse(/^That isn't|^Bad bets/.test(err) ? 'bad_request' : 'bad_bet', err);
+    const bets = {};
+    for (const [id, amt] of Object.entries(req.bets)) if (amt > 0) bets[id] = amt;
+    const limit = rankOf(a.econ).maxBet;
+    if (Math.max(...Object.values(bets)) > limit) refuse('over_limit', `Your table limit is ${limit.toLocaleString('en-US')} per bet. Rank up to raise it.`);
+    const total = Object.values(bets).reduce((x, y) => x + y, 0);
+    if (a.chips < total) refuse('not_enough_chips', 'Not enough chips for those bets.');
+    turn.ref = `${t}:${ts.n + 1}`;
+    const res = ROULETTE.settle(w, bets, ROULETTE.spin(w, randInt || BJ.cryptoRandInt));
+    a.rows.push({ account: 'chips', amount: -res.wagered, kind: 'bet', table_id: t, ref: turn.ref });
+    a.chips -= res.wagered;
+    if (res.returned > 0) {
+      a.rows.push({ account: 'chips', amount: res.returned, kind: 'payout', table_id: t, ref: turn.ref });
+      a.chips += res.returned;
+    }
+    ts.last = res;
+    ts.recent = [res.pocket, ...(ts.recent || [])].slice(0, 20);
+    ts.n++;
+    turn.ev.push(...ECON.afterRound(a, ROULETTE.facts(res), turn.now));
+  }
+
   /* ------------------------------------------------------------ economy -- */
 
   /** Chips currently in play at any table (they count against "broke"). */
@@ -391,6 +425,7 @@
    *   { op: 'deal', table: 'tcp', seq, bets: { ante, pp, scb } }
    *   { op: 'act',  table: 'tcp', seq, action: 'play'|'fold' }
    *   { op: 'deal', table: 'slot_<machine>', seq, level }   (one spin; during free spins level is ignored)
+   *   { op: 'deal', table: 'rl_american'|'rl_european', seq, bets: { betId: chips } }   (one roulette spin)
    *   { op: 'claim', i, day }        { op: 'claimAll' }
    *   { op: 'spin', wheel: 'bonus'|'rescue' }   ({ op: 'rescue' } = spin rescue)
    *   { op: 'vault', amount }        (+ deposit, - withdraw)
@@ -437,7 +472,10 @@
         if (game) {
           turn.ts = (await store.table(userId, t)) || emptyTable();
           if (req.seq !== turn.ts.seq) refuse('stale', 'The table changed (another tab or a double click). Showing the current state.');
-          if (isSlot(t)) {
+          if (isRoulette(t)) {
+            if (req.op !== 'deal') refuse('bad_request', 'Roulette only spins.');
+            rlDeal(turn, t, req, randInt);
+          } else if (isSlot(t)) {
             if (req.op !== 'deal') refuse('bad_request', 'Slot machines only spin.');
             if (store.pool) {
               turn.pool = await store.pool();             // null: no jackpot table yet
@@ -511,6 +549,8 @@
         name: r.display_name, avatar: r.avatar, level: lv.level, xp: e.xp || 0, tier: ECON.TIERS[tier].name,
         title: ECON.SHOP_BY_ID[eq.title].text, equipped: eq,
         worth: +r.worth, weekNet: +r.week_net, bestWin: +r.best_win, jpTotal: +r.jp_total, jpCount: +r.jp_count,
+        // v2 migration; 0 until it's applied
+        gains: +(r.gross_won || 0), losses: +(r.gross_lost || 0), allNet: +(r.all_net || 0),
         joined: r.joined, mine: r.user_id === userId,
       };
     });
@@ -540,5 +580,5 @@
   }
 
 
-  return { handle, TABLES, TABLE_IDS, SLOT_TABLES, roundView, tcpRoundView, tableView, rankOf, PlayError };
+  return { handle, TABLES, TABLE_IDS, SLOT_TABLES, RL_TABLES, roundView, tcpRoundView, tableView, rankOf, PlayError };
 });
