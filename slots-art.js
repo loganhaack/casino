@@ -48,6 +48,16 @@
     <stop offset="0" stop-color="#b8ffd8"/><stop offset=".5" stop-color="#21b36b"/><stop offset="1" stop-color="#05502c"/></linearGradient>
   <linearGradient id="sa-redlacq" x1="0" y1="0" x2="0" y2="1">
     <stop offset="0" stop-color="#ff5a4a"/><stop offset="1" stop-color="#8f0b0b"/></linearGradient>
+  <linearGradient id="sa-steel" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#f4f7fb"/><stop offset=".45" stop-color="#9aa4b2"/><stop offset=".55" stop-color="#5d6673"/><stop offset="1" stop-color="#c9d0da"/></linearGradient>
+  <linearGradient id="sa-lava" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fff2a8"/><stop offset=".3" stop-color="#ffb020"/><stop offset=".7" stop-color="#ff4a0a"/><stop offset="1" stop-color="#9a1500"/></linearGradient>
+  <radialGradient id="sa-ember" cx=".5" cy=".45" r=".6">
+    <stop offset="0" stop-color="#ffe9a0"/><stop offset=".35" stop-color="#ff8a1a"/><stop offset=".75" stop-color="#c22a00"/><stop offset="1" stop-color="#3a0800"/></radialGradient>
+  <linearGradient id="sa-basalt" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#4a4246"/><stop offset="1" stop-color="#151214"/></linearGradient>
+  <linearGradient id="sa-rune" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#2a6fd6"/><stop offset="1" stop-color="#0b2257"/></linearGradient>
   <filter id="sa-shadow" x="-20%" y="-20%" width="140%" height="140%">
     <feDropShadow dx="0" dy="2" stdDeviation="1.6" flood-color="#000" flood-opacity=".55"/></filter>`;
 
@@ -220,7 +230,64 @@
       <text x="50" y="89" text-anchor="middle" font-family="${SANS}" font-weight="900" font-size="13" fill="#ffe680" letter-spacing="1">BONUS</text></g>`,
   };
 
-  const ART = { gilded: GILDED, galleon: GALLEON, lantern: LANTERN };
+  // Obsidian Forge: fire-forged steel on basalt. Ranks are glowing-metal letters.
+  const FORGE = {
+    nine:  rank('9',  '#ffe3c2', '#c2561a', '#3a1204', SANS),
+    ten:   rank('10', '#d6e6ff', '#4a6fa8', '#0e1e3a', SANS),
+    jack:  rank('J',  '#e6ffd0', '#4c9a2a', '#133006', SANS),
+    queen: rank('Q',  '#f6d8ff', '#8e3bc4', '#2b0c40', SANS),
+    king:  rank('K',  '#ffd6cc', '#d0301c', '#420a04', SANS),
+    ace:   rank('A',  '#fff4bf', '#e0a21a', '#3f2a00', SANS),
+    axe: `<g filter="url(#sa-shadow)" stroke-linejoin="round">
+      <rect x="46" y="10" width="8" height="82" rx="3" fill="url(#sa-wood)" stroke="#2a1606" stroke-width="2"/>
+      <path d="M50 16 C30 14 14 26 12 46 C24 42 38 44 50 52 Z" fill="url(#sa-steel)" stroke="#2b3038" stroke-width="2.5"/>
+      <path d="M50 16 C70 14 86 26 88 46 C76 42 62 44 50 52 Z" fill="url(#sa-steel)" stroke="#2b3038" stroke-width="2.5"/>
+      <path d="M16 42 C26 36 38 38 48 46 M84 42 C74 36 62 38 52 46" fill="none" stroke="#ff7a1a" stroke-width="2.5" opacity=".9"/>
+      <rect x="43" y="50" width="14" height="8" rx="2" fill="url(#sa-gold)" stroke="#5a3a00" stroke-width="1.5"/>
+      <rect x="44" y="76" width="12" height="6" rx="2" fill="url(#sa-gold)" stroke="#5a3a00" stroke-width="1.5"/></g>`,
+    helm: `<g filter="url(#sa-shadow)" stroke-linejoin="round">
+      <path d="M26 40 C18 30 12 16 16 6 C22 16 30 24 36 30 Z" fill="#f2e6c8" stroke="#5a4a2a" stroke-width="2"/>
+      <path d="M74 40 C82 30 88 16 84 6 C78 16 70 24 64 30 Z" fill="#f2e6c8" stroke="#5a4a2a" stroke-width="2"/>
+      <path d="M22 62 C22 36 34 24 50 24 C66 24 78 36 78 62 L78 82 L62 86 L60 64 L40 64 L38 86 L22 82 Z" fill="url(#sa-steel)" stroke="#2b3038" stroke-width="2.5"/>
+      <rect x="46" y="44" width="8" height="34" rx="2" fill="#6d7684" stroke="#2b3038" stroke-width="1.5"/>
+      <path d="M30 52 L46 52 M54 52 L70 52" stroke="#111" stroke-width="5" stroke-linecap="round"/>
+      <path d="M30 52 L46 52 M54 52 L70 52" stroke="#ff8a1a" stroke-width="1.6" stroke-linecap="round" opacity=".9"/>
+      <path d="M24 40 C34 32 66 32 76 40" fill="none" stroke="url(#sa-gold)" stroke-width="3"/></g>`,
+    shield: `<g filter="url(#sa-shadow)" stroke-linejoin="round">
+      <path d="M50 6 L86 18 C86 52 74 78 50 94 C26 78 14 52 14 18 Z" fill="url(#sa-gold-h)" stroke="#5a3a00" stroke-width="2.5"/>
+      <path d="M50 14 L78 23 C78 51 68 72 50 85 C32 72 22 51 22 23 Z" fill="url(#sa-rune)" stroke="#0b1a3a" stroke-width="1.5"/>
+      <g fill="none" stroke="#7fe0ff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M50 26 L50 74 M50 34 L38 46 M50 34 L62 46 M50 54 L40 64 M50 54 L60 64"/></g>
+      <g fill="none" stroke="#e8fbff" stroke-width="1.2" stroke-linecap="round" opacity=".8">
+        <path d="M50 26 L50 74 M50 34 L38 46 M50 34 L62 46"/></g></g>`,
+    golem: `<g filter="url(#sa-shadow)" stroke-linejoin="round">
+      <circle cx="50" cy="50" r="47" fill="url(#sa-ember)"/>
+      <path d="M24 34 L36 14 L64 14 L76 34 L80 62 L66 84 L34 84 L20 62 Z" fill="url(#sa-basalt)" stroke="#ffb020" stroke-width="3"/>
+      <path d="M36 14 L44 34 L36 50 L24 34 M64 14 L56 34 L64 50 L76 34 M36 50 L50 58 L64 50 M44 34 L56 34 M34 84 L40 66 L50 58 L60 66 L66 84 M20 62 L36 50 M80 62 L64 50"
+        fill="none" stroke="url(#sa-lava)" stroke-width="4" stroke-linecap="round"/>
+      <path d="M33 40 L45 44 L43 48 L32 45 Z M67 40 L55 44 L57 48 L68 45 Z" fill="#fff2a8" stroke="#ff7a1a" stroke-width="1.5"/>
+      <path d="M40 70 C46 74 54 74 60 70" fill="none" stroke="#ffd23b" stroke-width="3" stroke-linecap="round"/></g>`,
+    hammer: `<g filter="url(#sa-shadow)" stroke-linejoin="round">
+      <circle cx="50" cy="44" r="40" fill="url(#sa-ember)" opacity=".7"/>
+      <rect x="46" y="34" width="8" height="40" rx="3" fill="url(#sa-wood)" stroke="#2a1606" stroke-width="2" transform="rotate(-28 50 50)"/>
+      <g transform="rotate(-28 50 50)">
+        <rect x="24" y="16" width="52" height="22" rx="4" fill="url(#sa-steel)" stroke="#2b3038" stroke-width="2.5"/>
+        <rect x="20" y="14" width="10" height="26" rx="3" fill="#6d7684" stroke="#2b3038" stroke-width="2"/>
+        <rect x="70" y="14" width="10" height="26" rx="3" fill="#6d7684" stroke="#2b3038" stroke-width="2"/>
+        <path d="M34 27 L66 27" stroke="#ff8a1a" stroke-width="3" stroke-linecap="round"/></g>
+      <rect x="10" y="66" width="80" height="24" rx="7" fill="#8a1200" stroke="url(#sa-gold)" stroke-width="2.5"/>
+      <text x="50" y="85" text-anchor="middle" font-family="${SANS}" font-weight="900" font-size="18" fill="url(#sa-lava)" stroke="#2a0600" stroke-width="1" letter-spacing="2">WILD</text></g>`,
+    volcano: `<g filter="url(#sa-shadow)" stroke-linejoin="round">
+      <circle cx="50" cy="30" r="26" fill="url(#sa-glow)"/>
+      <path d="M44 30 C40 18 46 8 50 4 C52 14 60 16 56 30 Z" fill="url(#sa-lava)"/>
+      <path d="M8 80 L36 34 L44 40 L50 32 L56 40 L64 34 L92 80 Z" fill="url(#sa-basalt)" stroke="#0a0808" stroke-width="2.5"/>
+      <path d="M44 40 L42 54 L48 64 L44 80 M56 40 L60 52 L54 62 L58 80" fill="none" stroke="url(#sa-lava)" stroke-width="3.5" stroke-linecap="round"/>
+      <path d="M36 34 L44 40 L50 32 L56 40 L64 34" fill="none" stroke="#ffb020" stroke-width="3"/>
+      <rect x="12" y="76" width="76" height="20" rx="6" fill="#3a0800" stroke="url(#sa-gold)" stroke-width="2"/>
+      <text x="50" y="91" text-anchor="middle" font-family="${SANS}" font-weight="900" font-size="12" fill="#ffd23b" letter-spacing="1">FREE SPINS</text></g>`,
+  };
+
+  const ART = { gilded: GILDED, galleon: GALLEON, lantern: LANTERN, forge: FORGE };
 
   /* -------------------------------------------------------- sprite -- */
   function build() {

@@ -302,7 +302,33 @@
       streak: true,   // progress = current run; a losing round resets it, a push leaves it
       count: f => (f.game === 'bj' || f.game === 'fb') ? Math.sign(f.mainNet) : null },
   ];
-  const QUEST_BY_ID = Object.fromEntries(QUESTS.map(q => [q.id, q]));
+  /**
+   * The daily CHALLENGE: one extra quest a day, much harder, paying
+   * CHALLENGE_MULT x a normal quest. Same deal as the others: chosen by the
+   * date and your tier, a grant after the result, never anything that
+   * decides a game.
+   */
+  const CHALLENGES = [
+    { id: 'xBjWins',   n: [20, 25, 30, 35, 40],      text: n => `Win ${n} blackjack hands`,
+      count: f => (f.game === 'bj' || f.game === 'fb') ? f.handsWon : 0 },
+    { id: 'xNaturals', n: [3, 4, 4, 5, 6],           text: n => `Get ${n} natural blackjacks`,
+      count: f => f.natural ? 1 : 0 },
+    { id: 'xStreak',   n: [5, 5, 6, 6, 7],           text: n => `Win ${n} blackjack rounds in a row`,
+      streak: true, count: f => (f.game === 'bj' || f.game === 'fb') ? Math.sign(f.mainNet) : null },
+    { id: 'xDoubles',  n: [4, 5, 6, 7, 8],           text: n => `Win ${n} doubled hands`,
+      count: f => f.doublesWon || 0 },
+    { id: 'xRounds',   n: [100, 125, 150, 175, 200], text: n => `Play ${n} rounds of anything`,
+      count: () => 1 },
+    { id: 'xTcpBig',   n: [3, 4, 5, 5, 6],           text: n => `Get a straight or better in Three Card Poker ${n} times`,
+      count: f => f.tcpStraightPlus ? 1 : 0 },
+    { id: 'xFeature',  n: [1, 1, 2, 2, 3],           text: n => `Trigger free spins on a slot machine${n > 1 ? ` ${n} times` : ''}`,
+      count: f => f.slotFeature ? 1 : 0 },
+    { id: 'xRoulette', n: [15, 20, 25, 30, 35],      text: n => `Win ${n} roulette spins`,
+      count: f => f.rouletteWin ? 1 : 0 },
+  ].map(q => Object.assign(q, { hard: true }));
+  const CHALLENGE_MULT = 5;      // chips: 5 x a normal quest
+  const CHALLENGE_XP_MULT = 3;   // XP: 3 x a normal quest
+  const QUEST_BY_ID = Object.fromEntries(QUESTS.concat(CHALLENGES).map(q => [q.id, q]));
   const QUEST_CHIPS = 100;   // x tier mult (x2 during Quest Rush)
 
   /** Casino-clock calendar day, 'YYYY-MM-DD'. */
@@ -327,7 +353,7 @@
     };
   }
 
-  /** The day's three quests for a tier. Same inputs, same quests, on every device. */
+  /** The day's three quests plus the challenge, for a tier. Same inputs, same quests, on every device. */
   function dailyQuests(day, tier) {
     const rand = mulberry32(seedFrom(day + '|' + tier));
     const pool = QUESTS.slice();
@@ -336,8 +362,16 @@
       const q = pool.splice(Math.floor(rand() * pool.length), 1)[0];
       picked.push({ id: q.id, target: q.n[tier], progress: 0, done: false });
     }
-    return picked;
+    return picked.concat(dailyChallenge(day, tier));
   }
+
+  /** The day's challenge quest. Its own seed, so adding it didn't change the other three. */
+  function dailyChallenge(day, tier) {
+    const rand = mulberry32(seedFrom('challenge|' + day + '|' + tier));
+    const q = CHALLENGES[Math.floor(rand() * CHALLENGES.length)];
+    return { id: q.id, target: q.n[tier], progress: 0, done: false, hard: true };
+  }
+  const isHard = (q) => !!(q && QUEST_BY_ID[q.id] && QUEST_BY_ID[q.id].hard);
 
   function questText(q) { return QUEST_BY_ID[q.id].text(q.target); }
 
@@ -357,9 +391,12 @@
     return false;
   }
 
-  function questReward(tier, date) {
+  /** A quest's reward at a tier on a date. Pass the quest to price a challenge. */
+  function questReward(tier, date, q) {
     const rush = isActive(date, 'questRush');
-    return { chips: Math.round(QUEST_CHIPS * TIERS[tier].mult * (rush ? 2 : 1)), xp: QUEST_XP };
+    const hard = isHard(q);
+    return { chips: Math.round(QUEST_CHIPS * TIERS[tier].mult * (rush ? 2 : 1) * (hard ? CHALLENGE_MULT : 1)),
+             xp: QUEST_XP * (hard ? CHALLENGE_XP_MULT : 1) };
   }
 
   /* =========================================================================
@@ -493,6 +530,58 @@
     const [y, mo, d] = weekMonday(date);
     return Math.round((Date.UTC(y, mo, d) - Date.UTC(2024, 0, 1)) / (7 * 86400000));
   }
+  /* =========================================================================
+     TOURNAMENTS (online only; the server runs them, the page shows them)
+     One a week on the casino clock. Everyone gets the same tournament stack
+     (NOT real chips: it never touches the wallet or the ledger), the same
+     bet limit, and the same number of rounds, at any game. Play all of
+     them to place; the biggest stack wins. Prizes are real chips, paid as
+     a 'tournament' ledger grant once the week is over. Same games, same
+     odds, same rules as everywhere else: nothing about a tournament changes
+     how a game deals or pays.
+     ========================================================================= */
+
+  const TOURNEY = {
+    stack: 10000,              // tournament chips each entry starts with
+    rounds: 100,               // rounds per entry (free spins don't count); play them all to place
+    maxBet: 1000,              // per bet (per spin at the slots), the same for everyone
+    graceMs: 15 * 60000,       // after the week ends, a round still open may finish; prizes wait for it
+    prizes: [3000, 1500, 1000],   // 1st, 2nd, 3rd (each also earns a trophy)
+    placePrize: 400,           // 4th to placesPaid
+    placesPaid: 10,
+    finisherPrize: 200,        // everyone else who played all their rounds
+  };
+
+  /** A date's tournament week: its Monday on the casino clock, 'YYYYMMDD'. */
+  function tourneyWeek(date) { return dayKey(weekStart(date)).replace(/-/g, ''); }
+  /** The table the server keeps a player's entry in. */
+  const tourneyTable = (week) => 'tn_' + week;
+  /** When a week's tournament starts, ends, and closes (end + grace). */
+  function tourneyBounds(week) {
+    const start = atWall(+week.slice(0, 4), +week.slice(4, 6) - 1, +week.slice(6, 8));
+    const end = weekStart(new Date(start.getTime() + 8 * 86400000));
+    return { start, end, closes: new Date(end.getTime() + TOURNEY.graceMs) };
+  }
+  /**
+   * Final order: entries that played every round, biggest stack first
+   * (ties share a place: 1, 1, 3), then everyone still short of the rounds,
+   * unplaced. Entries are { chips, rounds, ... }; returns copies with place.
+   */
+  function tourneyStandings(entries) {
+    const fin = entries.filter(e => e.rounds >= TOURNEY.rounds).sort((a, b) => b.chips - a.chips);
+    const rest = entries.filter(e => e.rounds < TOURNEY.rounds).sort((a, b) => b.chips - a.chips || b.rounds - a.rounds);
+    const out = [];
+    fin.forEach((e, i) => out.push(Object.assign({}, e, { place: i > 0 && e.chips === fin[i - 1].chips ? out[i - 1].place : i + 1 })));
+    for (const e of rest) out.push(Object.assign({}, e, { place: null }));
+    return out;
+  }
+  /** Real chips a place wins (null = didn't play every round: nothing). */
+  function tourneyPrize(place) {
+    if (!place) return 0;
+    if (place <= TOURNEY.prizes.length) return TOURNEY.prizes[place - 1];
+    return place <= TOURNEY.placesPaid ? TOURNEY.placePrize : TOURNEY.finisherPrize;
+  }
+
   const salePrice = (price, off) => Math.max(50, Math.round(price * (1 - off) / 50) * 50);
 
   /** Everything on sale at `date`: same answer on every device at the same moment. */
@@ -560,9 +649,10 @@
       quests: { day: '', tier: -1, list: [] },
       owned: ['felt-green', 'back-blue', 'title-none', 'frame-none'],
       equipped: { felt: 'felt-green', back: 'back-blue', title: 'title-none', frame: 'frame-none' },
-      ledger: { opening, bonusWheel: 0, rescueWheel: 0, quests: 0, promo: 0, interest: 0, shop: 0, admin: 0 },
+      ledger: { opening, bonusWheel: 0, rescueWheel: 0, quests: 0, promo: 0, interest: 0, shop: 0, admin: 0, tournament: 0 },
       vault: { balance: 0, day: '', minToday: 0 },   // saved chips: can't be bet, earn capped daily interest
       spins: [],    // recent wheel results, newest last (capped)
+      trophies: [], // tournament finishes that won a trophy: { week, place, of }
     };
   }
 
@@ -604,13 +694,18 @@
   /** Today's quests. Ranking up mid-day keeps today's set; the new tier applies tomorrow. */
   function ensureQuests(a, t, ev) {
     const day = dayKey(t);
-    if (a.econ.quests.day === day) return;
+    if (a.econ.quests.day === day) {
+      // Today's list was dealt before the daily challenge existed: add today's.
+      const qs = a.econ.quests;
+      if (qs.tier >= 0 && !qs.list.some(isHard)) qs.list.push(dailyChallenge(day, qs.tier));
+      return;
+    }
     // Yesterday's finished-but-unclaimed quests are paid, not lost.
     const old = a.econ.quests;
     let owed = 0, xp = 0;
     for (const q of old.list || []) {
       if (!q.done || q.claimed) continue;
-      const rw = q.reward || questReward(old.tier, t);
+      const rw = q.reward || questReward(old.tier, t, q);
       q.claimed = true; owed += rw.chips; xp += rw.xp;
     }
     if (owed) {
@@ -653,7 +748,7 @@
       if (advanceQuest(q, facts)) {
         // The reward is fixed the moment the quest completes (so a Quest Rush
         // completion stays doubled), but paid only when claimed.
-        q.reward = questReward(qs.tier, t);
+        q.reward = questReward(qs.tier, t, q);
         q.claimed = false;
         ev.push({ type: 'questDone', i, day: qs.day, q });
       }
@@ -672,7 +767,7 @@
     if (day && day !== qs.day) return null;
     const q = qs.list[i];
     if (!q || !q.done || q.claimed) return null;
-    const rw = q.reward || questReward(qs.tier, t);
+    const rw = q.reward || questReward(qs.tier, t, q);
     q.claimed = true;
     grant(a, 'quests', rw.chips);
     addXp(a, rw.xp, t, ev);
@@ -760,6 +855,8 @@
     CLOCK_ZONE, CLOCK_NAME, wall, atWall, nextDayStart,
     EVENTS, activeEvents, isActive, upcomingEvents, promoFor,
     QUESTS, QUEST_CHIPS, dayKey, dailyQuests, questText, advanceQuest, questReward,
+    CHALLENGES, CHALLENGE_MULT, CHALLENGE_XP_MULT, dailyChallenge, isHard,
+    TOURNEY, tourneyWeek, tourneyTable, tourneyBounds, tourneyStandings, tourneyPrize,
     VAULT, vaultInterest, vaultAccrue, vaultMove,
     SHOP, SHOP_BY_ID, COLLECTIONS, shopCycle, shopPrice, weekIndex, weekStart,
     blankEcon, normalizeEcon, levelOf, tierOf, grant, addXp, ensureQuests, accrueVault, afterRound,

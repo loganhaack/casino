@@ -7,7 +7,7 @@ Context for Claude Code working in this repo.
 A play-chip casino game (no real money, ever) built so that its odds are
 verifiable rather than trusted. Three Card Poker, Blackjack (with 21+3 and
 Perfect Pairs side bets), Free Bet Blackjack (with Pot of Gold), roulette,
-three slot machines, the
+four slot machines, the
 economy (`economy.js`) and Supabase accounts with server-side play are done.
 
 The origin of the project: social casino apps are unregulated and have every
@@ -24,7 +24,7 @@ node test-blackjack.js         # blackjack totals + engine scenarios + fuzz, ~6s
 node enumerate-blackjack.js    # exact dealer tables vs Wizard of Odds, <1s, writes expected-blackjack.json
 node test-blackjack-payouts.js # real page code: chip accounting, house edge, dealer chi-square, ~3min
 node test-economy.js           # wheels, quests, events, ledger, "deal is indifferent to who you are", ~30s
-node enumerate-slots.js        # exact slot PAR sheets, every reel-stop combination, ~2min; fails if SLOTS.PAR drifts
+node enumerate-slots.js        # exact slot PAR sheets, every reel-stop combination (3.2 billion, multi-threaded), ~2min; fails if SLOTS.PAR drifts
 node test-slots.js             # real page code: slot chip accounting, RTP within 4 SE, free spins + reload, ~3min
 node test-roulette.js          # layout + exact odds, settle vs brute force, uniform pockets, page accounting, ~2min
 node sync-shared.js            # copy blackjack-core/tcp-core/slots-core/jackpot/roulette-core/tables/economy into supabase/functions/_shared/
@@ -199,6 +199,16 @@ weekly event calendar, daily quests, and the cosmetics shop.
   toward the Rescue Wheel's "broke" test.
 - **Tuning direction** (owner's call): the economy should feel fairly hard.
   If it needs more generosity, add it through saving (vault), not handouts.
+  Owner's update (2026-11-18): growing past the opening 1,000 felt too hard
+  against the house edge, so they asked for two more earned sources: the
+  daily challenge quest and weekly tournament prizes. Both are earned
+  (a hard target; a finish in a tournament), never handed out for losing.
+- **Daily challenge** (`ECON.CHALLENGES`): a fourth quest each day, much
+  harder, paying `CHALLENGE_MULT` (5x) chips and `CHALLENGE_XP_MULT` (3x) XP.
+  Own seed (`dailyChallenge`), so the normal three didn't change. Price any
+  quest with `questReward(tier, date, q)`: without `q` a challenge is
+  priced as a normal quest. Lists dealt before it existed get today's
+  challenge appended by `ensureQuests`.
 - A Three Card Poker hand awaiting play/fold is persisted in `S.tcpRound`
   (previously a reload there destroyed the stake).
 
@@ -239,7 +249,7 @@ weekly event calendar, daily quests, and the cosmetics shop.
   the dealer's three cards are null in the page until the hand is over. An
   Online/Offline button under the chips switches. Display stats/bets persist
   under `casino.online.v1`.
-- Online: every game (Blackjack, Free Bet, Three Card Poker, slots, roulette), XP (incl.
+- Online: every game (Blackjack, Free Bet, Three Card Poker, slots, roulette), weekly tournaments, XP (incl.
   Double XP), quests + claiming, event promos, both wheels, vault + interest,
   shop + equip. Every server request first catches the day up
   (`ensureQuests`, `accrueVault`).
@@ -263,15 +273,30 @@ symbols drawn via one hidden sprite.
   `payOf()` and fails if PAR disagrees. Change a strip, pay or feature: run it,
   copy its `suggestedPar` into PAR, run `test-slots.js`. Target RTP band is
   roughly 92-96%, like real casinos; current: Gilded Sevens 93.04%, Sunken
-  Galleon 94.96%, Lantern Festival 94.65%.
-- `payOf()` must stay allocation-free (the enumerator calls it ~750M times);
+  Galleon 94.96%, Lantern Festival 94.65%, Obsidian Forge 94.47%.
+- **Obsidian Forge** (the owner asked for a high-volatility machine, an
+  extra reel or two): 6x4 ways (4,096), stacked symbols, an EXPANDING wild
+  (`expanding: true`: a hammer anywhere on its reel makes every row of that
+  reel wild; a scatter there still counts) and a CLIMBING free-spin
+  multiplier (`free.climb` / `maxMult`; starts at `free.mult`; a spin pays
+  at the mult it started with, then +climb if it won). Free spins by
+  scatter count (`free.awards`). Base SD 13.3 vs 1.5-4.3 for the others.
+  A climbing feature can't use the fixed-mult formula: the enumerator
+  computes it exactly from the walked joint distribution of (won?, spins
+  awarded) over states (spins left, mult); that requires every
+  spin-awarding window to also pay (scatter pays), or the climb is
+  unbounded; it checks this. `test-slots.js`'s simulated RTP is the
+  independent check on that calculation.
+- The enumerator splits machines over 300M combinations across worker
+  threads by reel 1's stop; every combination is still walked once.
+- `payOf()` must stay allocation-free (the enumerator calls it ~3.2 billion times);
   `wins()` must always sum to it (`test-slots.js` checks).
 - Free-spin state lives with the machine (`S.slots.m[id].free` offline, the
   `slot_<id>` table state online) so a reload can't lose a feature, and you
   can't switch machines mid-feature. Free spins don't award XP (nothing wagered).
 - Table limit applies to the total cost of a spin. Every pay is a whole number
   of chips by construction (`checkMachine()` rejects anything else).
-- Machines are original designs in real genres (stepper, 20-line, 243-ways).
+- Machines are original designs in real genres (stepper, 20-line, 243-ways, 4,096-ways).
   Don't rename them after, or restyle them as, real branded games.
 
 ## Linked jackpots (online only)
@@ -340,10 +365,39 @@ Table limit is per bet; table minimum is 5 chips a spin.
   `blankEcon().equipped`; `normalizeEcon` (and the page's load) backfill
   them and their free default into old accounts.
 
+## Weekly tournaments (online only)
+
+Rules in `economy.js` (`ECON.TOURNEY`, `tourneyWeek/Bounds/Standings/Prize`);
+the server runs them (`logic.js` TOURNAMENTS); migration
+`20261118000001_tournaments.sql` (the `tournament` ledger kind, the
+`tournament_standings()` function, trophies on the leaderboard).
+
+- One a week on the casino clock (Monday 00:00 ET to Monday 00:00 ET).
+  Everyone gets the same stack, the same per-bet limit (whatever their rank)
+  and the same number of rounds, at any game. Play every round to place;
+  biggest stack wins; ties share a place.
+- An entry is ONE table state, `tn_<YYYYMMDD>`, holding the stack, the
+  rounds and its own copy of every table. Tournament chips are not chips:
+  they never touch the wallet or the ledger (`test-server.js` checks the
+  wallet and ledger are byte-identical after tournament play). The games
+  are the same functions, run on a bankroll `{ tourney: true }`:
+  `limitOf()` gives the tournament limit and `after()` counts the round
+  instead of awarding XP/quests/promos. No jackpots.
+- A round open when the week ends may finish within `graceMs`; after
+  `closes` the standings can't change, and only then is `tnClaim` allowed
+  (once: `paid` is written into the entry). Prizes are a `tournament`
+  ledger grant; top three also get `econ.trophies`, shown on profile cards.
+- Page: tournament mode swaps `G()` (online table states) to `ON.tn.g` and
+  `bankroll()` to the entry's stack; `onCall()` adds `tourney: week` to
+  every deal/act. Toggling is refused while a request or animation is busy,
+  so a reply can't land in the other mode's tables.
+- Hard rule 2 applies unchanged: same deal for everyone; `test-server.js`
+  plays a Lv1 and a Diamond entry on one seed and requires identical rounds.
+
 ## Next up
 
 The roadmap is done (see README). Ideas the owner hasn't decided on yet:
-weekly tournaments with prizes, friend lists, more slot machines, craps.
+friend lists, more slot machines, craps.
 
 Edge checks in both payout harnesses fail only beyond 4 standard errors
 (about 1 run in 16,000 for a correct game). If one fails, re-run once; if it

@@ -51,7 +51,25 @@ console.log('\ncore');
       ok(itemised === SLOTS.payOf(m, g), `${id}: wins() ${itemised} != payOf() ${SLOTS.payOf(m, g)}`);
     }
   }
-  report('payOf() == sum of itemised wins on 60,000 random windows', f);
+  report('payOf() == sum of itemised wins on 80,000 random windows', f);
+}
+{
+  // Expanding wilds: a hammer anywhere on reels 2-5 makes the whole reel count as wild, on every row.
+  const f = fail, m = SLOTS.MACHINES.forge, ri = seededInt(9), rows = m.rows, W = m.wildIdx;
+  let expanded = 0;
+  for (let k = 0; k < 30000; k++) {
+    const g = SLOTS.windowOf(m, SLOTS.spinStops(m, ri));
+    const ex = SLOTS.expandedReels(m, g);
+    const filled = Int8Array.from(g);
+    for (const i of ex) { for (let j = 0; j < rows; j++) filled[i * rows + j] = W; expanded++; }
+    // the same window with the expanded reels literally full of wilds must pay the same (minus nothing: no scatter sits under a wild)
+    const scat = (gg) => SLOTS.scatterCount(m, gg);
+    if (scat(filled) === scat(g)) ok(SLOTS.waysPay(m, g, null) === SLOTS.waysPay(m, filled, null), 'expanded reel pays as a reel of wilds');
+    ok(ex.every(i => i >= 1 && i <= 4), 'only reels 2 to 5 carry the hammer');
+  }
+  ok(expanded > 1000, 'expansions seen: ' + expanded);
+  ok(m.rows ** m.reels.length === 4096, '6x4 is 4,096 ways');
+  report(`Obsidian Forge: an expanding hammer pays exactly as a reel of wilds (${expanded.toLocaleString()} expansions)`, f);
 }
 {
   const f = fail, ri = seededInt(2);
@@ -65,13 +83,18 @@ console.log('\ncore');
       if (free) { ok(r.cost === 0, `${id}: a free spin charged ${r.cost}`); freeSpins++; }
       else ok(r.cost === SLOTS.totalBet(m, level), `${id}: paid spin cost ${r.cost}`);
       if (!free && r.free) features++;
-      if (r.free) ok(r.free.left > 0 && r.free.level === level && r.free.mult === m.free.mult, `${id}: bad feature state`);
+      if (r.free) {
+        // fixed: the trigger's mult throughout; climbing: +climb after each winning free spin, capped
+        const want = !free ? m.free.mult : m.free.climb ? Math.min(m.free.maxMult, free.mult + (r.win > 0 ? m.free.climb : 0)) : free.mult;
+        ok(r.free.left > 0 && r.free.level === level && r.free.mult === want, `${id}: bad feature state (mult ${r.free.mult}, want ${want})`);
+        if (free) ok(r.mult === free.mult, `${id}: a free spin paid at x${r.mult}, not the x${free.mult} it started with`);
+      }
       free = r.free;
     }
     if (m.free) ok(features > 0 && freeSpins >= features * m.free.spins - m.free.spins, `${id}: features ${features}, free spins ${freeSpins}`);
   }
-  ok(SLOTS.betError(SLOTS.MACHINES.gilded, 7) && SLOTS.betError(SLOTS.MACHINES.galleon, 0) && SLOTS.betError(SLOTS.MACHINES.lantern, 1.5), 'bad bets refused');
-  report('paid spins cost the bet; free spins are free, at the trigger bet, with the multiplier; whole chips', f);
+  ok(SLOTS.betError(SLOTS.MACHINES.gilded, 7) && SLOTS.betError(SLOTS.MACHINES.galleon, 0) && SLOTS.betError(SLOTS.MACHINES.lantern, 1.5) && SLOTS.betError(SLOTS.MACHINES.forge, 0), 'bad bets refused');
+  report('paid spins cost the bet; free spins are free, at the trigger bet, with the multiplier (climbing where it climbs); whole chips', f);
 }
 
 /* ---------------------------------------------------------- the page -- */
@@ -206,9 +229,10 @@ console.log('\nthe deal is indifferent to who you are (hard rule 2)');
     }
     return out;
   }
-  const broke = run(0, 1000), diamond = run(500000, 5e7);
-  ok(broke.length === diamond.length && broke.every((x, i) => x === diamond[i]), 'Lv1 with 1,000 and Diamond with 50,000,000 got different spins');
-  report('Lv1 / 1,000 chips vs Diamond / 50M chips, same RNG: identical stops and wins on every machine', f);
+  // Lv1 needs enough to afford every spin (Obsidian Forge's minimum is 50 a spin), or its spins stop and the lists differ for that reason.
+  const lv1 = run(0, 100000), diamond = run(500000, 5e7);
+  ok(lv1.length === diamond.length && lv1.every((x, i) => x === diamond[i]), 'Lv1 with 100,000 and Diamond with 50,000,000 got different spins');
+  report('Lv1 / 100k chips vs Diamond / 50M chips, same RNG: identical stops and wins on every machine', f);
 }
 
 console.log(`\n${fail ? 'FAIL' : 'PASS'}: ${pass} checks, ${fail} failed`);

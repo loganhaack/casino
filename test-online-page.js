@@ -109,6 +109,7 @@ function loadPage(net, storage) {
   TCPS, onTcpDeal, onTcpAct, deal, resolve, getPhase: () => phase,
   SLS, slotST, slotPick, onSlotSpin, slotSpin, setAnimUntil: (v) => { animUntil = v; },
   getLB: () => LB, lbLoad, lbCard, RLS, onRlSpin, rlSpin,
+  tnSet, tnOn, G, tnLoadBoard, tnClaim, getTNB: () => TNB, tnRender,
   get bjTable() { return bjTable; } };`, sandbox, { filename: 'index.html:script' });
   return { H: sandbox.__h, el: id => sandbox.document.getElementById(id) };
 }
@@ -317,7 +318,9 @@ setTimeout(() => { console.log('\nFAIL: timed out (a round never finished?)'); p
         spins++; if (wasFree) frees++;
         const after = net.store.wallets.get(USER).chips, last = st.last;
         const extra = net.store.ledger.slice(rows0).filter(x => x.account === 'chips' && x.kind !== 'bet' && x.kind !== 'payout').reduce((a, x) => a + x.amount, 0);
-        ok(last && after - before === last.win - last.cost + extra, `${id}: server moved ${after - before}, page shows ${last && last.win - last.cost} + ${extra}`);
+        // a linked jackpot (rare here, but the Mini can drop) is paid on top of the spin
+        const jp = (last && last.jackpotWin) || 0;
+        ok(last && after - before === last.win - last.cost + jp + extra, `${id}: server moved ${after - before}, page shows ${last && last.win - last.cost} + jackpot ${jp} + ${extra}`);
         ok(P.H.bankroll() === after && after === net.store.ledgerSum(USER), 'page bankroll == server == ledger');
         ok(!wasFree || last.cost === 0, 'free spin charged');
         if (i > 2000) break;
@@ -346,7 +349,7 @@ setTimeout(() => { console.log('\nFAIL: timed out (a round never finished?)'); p
     ok(P2.H.slotST().last.cost === 0 && net.store.wallets.get(USER).chips >= c0, 'resumed free spin played free');
     while (P2.H.slotST().free) await P2.H.onSlotSpin();
     P = P2;
-    report(`${spins} online spins (${frees} free) on 3 machines: page == server every spin; feature survives a reload; browser untouched`, f);
+    report(`${spins} online spins (${frees} free) on ${SLOTS.MACHINE_IDS.length} machines: page == server every spin; feature survives a reload; browser untouched`, f);
   }
 
   console.log('\nlinked jackpots');
@@ -562,6 +565,78 @@ setTimeout(() => { console.log('\nFAIL: timed out (a round never finished?)'); p
     }
     ok(P.H.getS().chips === S0 && JSON.stringify(P.H.getS().rl.stats) === rl0, 'browser chips and offline roulette untouched');
     report('120 online spins on both wheels: page == server every spin; browser untouched', f);
+  }
+
+  console.log('\ntournament');
+  {
+    const f = fail, ECON = require('./economy.js'), R = require('./roulette-core.js'), SLOTS = require('./slots-core.js');
+    const TN = ECON.TOURNEY, week = ECON.tourneyWeek(new Date()), key = USER + '/' + ECON.tourneyTable(week);
+    const ON = P.H.getON();
+    const noVer = (w) => JSON.stringify(Object.assign({}, w, { version: 0 })), w0 = noVer(net.store.wallets.get(USER)), real0 = JSON.stringify([ON.ts.bj.seq, ON.tcp.seq, ON.rl.seq, ON.slots.m.galleon.seq]);
+    const S0 = P.H.getS().chips;
+    ok(ON.tn && ON.tn.entry && ON.tn.entry.week === week && ON.tn.entry.chips === TN.stack && !P.H.tnOn(), 'the week\'s entry loaded at boot, tournament mode off');
+    P.H.tnSet(true);
+    ok(P.H.tnOn() && P.H.bankroll() === TN.stack && P.H.G() === ON.tn.g, 'tournament mode: bankroll is the stack, tables are the entry\'s');
+    ok(P.el('bankLbl').textContent === 'tournament chips' && !P.el('tnBadge').hidden, 'header says tournament chips; badge shown');
+    const entry = () => net.store.tables.get(key);
+    const same = (label) => ok(P.H.bankroll() === entry().chips && ON.tn.entry.chips === entry().chips && ON.tn.entry.rounds === entry().rounds,
+      `${label}: page stack ${P.H.bankroll()} == server entry ${entry() && entry().chips}`);
+    P.H.showGame('bj');
+    ok(P.H.TS() === ON.tn.g.ts.bj, 'blackjack plays the entry\'s table');
+    const rnd = mulberry32(31);
+    for (let i = 0; i < 12; i++) { await playRound(P, rnd); same('blackjack'); }
+    ok(entry().rounds === 12, '12 blackjack rounds counted (' + entry().rounds + ')');
+    P.H.showGame('tcp');
+    for (let i = 0; i < 6; i++) {
+      P.H.TCPS().bets = { ante: 25, pp: 5, scb: 0 };
+      await P.H.onTcpDeal();
+      if (P.H.TCPS().round) await P.H.onTcpAct('play');
+      same('three card poker');
+    }
+    P.H.showGame('roulette');
+    for (let i = 0; i < 6; i++) {
+      P.H.RLS().bets = { ['red:' + [...R.RED].sort((a, b) => a - b).join('-')]: 50 };
+      await P.H.onRlSpin();
+      same('roulette');
+    }
+    P.H.showGame('slots'); P.H.slotPick('galleon'); P.H.slotST().level = 2;
+    // 8 paid spins (free spins don't count as rounds), then any feature played out
+    for (let paid = 0, i = 0; paid < 8 || P.H.slotST().free; i++) { if (!P.H.slotST().free) paid++; await P.H.onSlotSpin(); same('slots'); if (i > 300) break; }
+    ok(entry().rounds === 32 && /32\/100/.test(P.el('tnBadge').textContent), 'rounds counted across games (free spins not); badge shows them: ' + entry().rounds);
+    ok(noVer(net.store.wallets.get(USER)) === w0, 'the wallet never moved (chips, vault, XP, quests)');
+    ok(JSON.stringify([ON.ts.bj.seq, ON.tcp.seq, ON.rl.seq, ON.slots.m.galleon.seq]) === real0, 'your own online tables never moved');
+    ok(P.H.getS().chips === S0, 'browser chips untouched');
+    // over the tournament limit: refused in the page (Bronze's own limit is lower, the tournament's is the same for all)
+    P.H.showGame('bj'); P.H.TS().bet = TN.maxBet + 500;
+    const calls = net.calls; await P.H.bjDeal();
+    ok(net.calls === calls && /tournament|limit/i.test(P.el('bjMsg').textContent), 'over the tournament limit stopped in the page');
+    P.H.TS().bet = 10;
+    P.H.tnSet(false);
+    ok(!P.H.tnOn() && P.H.bankroll() === net.store.wallets.get(USER).chips && P.H.TS() === ON.ts.bj && P.el('tnBadge').hidden, 'back to your chips');
+    // reload: the entry comes back from the server
+    const P2 = loadPage(net, storage); await tick(200);
+    const ON2 = P2.H.getON();
+    ok(ON2.tn.entry.chips === entry().chips && ON2.tn.entry.rounds === entry().rounds && !P2.H.tnOn(), 'a reload restores the entry from the server');
+    P2.H.tnSet(true);
+    ok(P2.H.bankroll() === entry().chips && ON2.tn.g.ts.bj.seq === entry().tables.bj.seq, '...and its tables');
+    P2.H.tnSet(false);
+    // last week's prize: an entry that played every round, claimed from the Tournament tab
+    const prev = ECON.tourneyWeek(new Date(ECON.tourneyBounds(week).start.getTime() - 86400000));
+    net.store.profiles.set(USER, { display_name: 'Tester', avatar: 'fox' });
+    net.store.tables.set(USER + '/' + ECON.tourneyTable(prev), { week: prev, chips: 18000, rounds: TN.rounds, entered: 1, paid: null, tables: {} });
+    P.H.showGame('tourney');
+    await P.H.tnLoadBoard(true);
+    const TNB = P.H.getTNB();
+    ok(TNB.data && TNB.data.last && TNB.data.last.final && TNB.data.current, 'standings for this week and last week');
+    TNB.view = 'last'; P.H.tnRender();
+    ok(/data-tnclaim/.test(P.el('tnBody').innerHTML), 'a claim button for last week\'s prize');
+    const c0 = net.store.wallets.get(USER).chips;
+    await P.H.tnClaim(prev); await tick();
+    const row = net.store.ledger[net.store.ledger.length - 1];
+    ok(net.store.wallets.get(USER).chips === c0 + TN.prizes[0] && row.kind === 'tournament' && P.H.bankroll() === c0 + TN.prizes[0], 'prize paid through the ledger: ' + (net.store.wallets.get(USER).chips - c0));
+    TNB.view = 'current'; P.H.tnRender();
+    ok(/Tester/.test(P.el('tnBody').innerHTML) && /Tournament stack/.test(P.el('tnEntry').innerHTML), 'this week\'s standings and your entry drawn');
+    report('tournament mode: every game on the entry, page == server every round; wallet and own tables untouched; reload; prize claim', f);
   }
 
   console.log('\nplayers');

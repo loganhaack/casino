@@ -198,9 +198,13 @@ through saving (the vault), not handouts. Never through odds.
 - [x] Free Bet with the Pot of Gold side bet (house edge measured: 6.81%)
 - [x] Roulette: American and European wheels, every bet on a real layout,
       exact odds, online and offline
+- [x] Weekly tournaments: the same stack, limit and number of rounds for
+      everyone, any game; real-chip prizes and trophies (online)
+- [x] Daily challenge quest: one extra, much harder quest a day at 5x the reward
 - [x] Profiles visible to friends: name, avatar, avatar frames (new shop
       cosmetic), title, felt and card back, on player cards. Cosmetic only.
-- [x] Slots: three machines (classic 3-reel, 20-line, 243-ways) with exact
+- [x] Slots: four machines (classic 3-reel, 20-line, 243-ways, and a high-volatility
+      6-reel 4,096-ways machine with expanding wilds and climbing free spins) with exact
       PAR sheets by complete enumeration (`enumerate-slots.js`), published
       reel strips, free spins, online and offline.
 - [x] Linked progressive jackpots (Mini/Minor must-hit-by with published

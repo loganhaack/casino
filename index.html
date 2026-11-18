@@ -353,6 +353,15 @@
   .gamecard .ds { font-size: 12px; color: rgba(255,255,255,.65); }
   .gamecard .mine { font: 12px var(--mono); color: rgba(255,255,255,.55); }
   .gamecard .go { margin-top: auto; align-self: flex-start; }
+  .qhard { display: inline-block; font: 700 9px/1 var(--mono); letter-spacing: .08em; color: #1a1205; background: linear-gradient(#ffd977, #e0a92e); border-radius: 3px; padding: 3px 5px; margin-right: 6px; vertical-align: 1px; }
+  .mode.tnb { background: linear-gradient(#ffd977, #d99a1e); color: #1a1205; border-color: #f3c95a; font-weight: 700; }
+  .tn-entry { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 10px 0; }
+  .tn-entry .k { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em; }
+  .tn-entry .v { font: 700 20px var(--mono); }
+  .tn-bar { height: 6px; background: rgba(255,255,255,.08); border-radius: 3px; overflow: hidden; margin: 4px 0 10px; }
+  .tn-bar div { height: 100%; background: linear-gradient(90deg, #e0a92e, #ffd977); }
+  .tn-prizes { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .tn-prizes span { font: 12px var(--mono); background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); border-radius: 6px; padding: 4px 8px; }
   .mini-quest { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.06); font-size: 13px; }
   .mini-quest .tx { flex: 1; min-width: 0; }
   .mini-quest .qbar { height: 5px; background: rgba(255,255,255,.08); border-radius: 3px; margin-top: 4px; overflow: hidden; }
@@ -519,7 +528,7 @@
   }
 
   /* ---------- slots (display only; the math is slots-core.js) ---------- */
-  #game-slots .lobby { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+  #game-slots .lobby { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
   .sl-card {
     cursor: pointer; border-radius: 12px; padding: 10px 8px 9px; border: 2px solid rgba(255,255,255,.08); min-width: 0; overflow-wrap: anywhere;
     color: #fff; text-align: center; font: inherit; box-shadow: 0 4px 14px rgba(0,0,0,.45);
@@ -541,7 +550,15 @@
   .sl-t-gilded  { --cab1: #8b0a14; --cab2: #3a0207; --trim: #d9a93a; --marq: radial-gradient(ellipse at 50% 40%, #2b0306, #120002); --title: #ffd864; --glow: #ff9d00; --frame: linear-gradient(#c9ced6, #707986); --reelbg: linear-gradient(180deg, #fffdf6, #efe8d6); --led: #ff3b2f; }
   .sl-t-galleon { --cab1: #0e3a5c; --cab2: #04172a; --trim: #b98a3a; --marq: radial-gradient(ellipse at 50% 40%, #0d4a6e, #021220); --title: #ffe28a; --glow: #2fd6ff; --frame: linear-gradient(#7a4b20, #3a210b); --reelbg: linear-gradient(180deg, #0d3150, #061a2c); --led: #ffd23b; }
   .sl-t-lantern { --cab1: #7a0d1d; --cab2: #2a0510; --trim: #e0b43a; --marq: radial-gradient(ellipse at 50% 40%, #4b0d5c, #16021e); --title: #ffe07a; --glow: #ff3d7f; --frame: linear-gradient(#e0b43a, #7a5210); --reelbg: linear-gradient(180deg, #2c0838, #12021a); --led: #ff5edb; }
-  .sl-card.sl-t-gilded, .sl-card.sl-t-galleon, .sl-card.sl-t-lantern { background: linear-gradient(180deg, var(--cab1), var(--cab2)); }
+  .sl-t-forge   { --cab1: #2a0d06; --cab2: #0c0403; --trim: #ff7a1a; --marq: radial-gradient(ellipse at 50% 80%, #6a1a04, #120403 70%); --title: #ffc04a; --glow: #ff4a0a; --frame: linear-gradient(#5d6673, #1c1f24); --reelbg: linear-gradient(180deg, #1c1416, #0a0708); --led: #ff6a00; }
+  .sl-card.sl-t-gilded, .sl-card.sl-t-galleon, .sl-card.sl-t-lantern, .sl-card.sl-t-forge { background: linear-gradient(180deg, var(--cab1), var(--cab2)); }
+  .cab.sl-k-x6 { --cell: min(86px, calc((100vw - 100px) / 6)); max-width: 640px; }
+  .sl-k-x6 .reels { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; }
+  .sl-k-x6 .reel { height: calc(var(--cell) * 4); }
+  /* an expanded wild: every cell of the reel turns into the wild (a scatter stays, and still counts) */
+  .reel.xreel { background: radial-gradient(ellipse at 50% 50%, #ff9a2a, #8a1a00 75%); box-shadow: inset 0 0 0 2px #ffb020, 0 0 16px 3px rgba(255,110,20,.75); }
+  .cell.xcell .sym { animation: xwIn .45s ease-out both; }
+  @keyframes xwIn { from { transform: scale(.3) rotate(-25deg); opacity: 0; } 60% { transform: scale(1.12); opacity: 1; } to { transform: scale(1); } }
 
   .marquee { position: relative; border-radius: 14px; padding: 16px 10px 12px; margin-bottom: 10px; text-align: center;
     background: var(--marq); box-shadow: inset 0 0 22px rgba(0,0,0,.75), 0 0 0 3px var(--trim); overflow: hidden; }
@@ -764,6 +781,8 @@
     .sl-card .mini .sym { width: 22px; height: 22px; }
     .cab { --cell: calc((100vw - 84px) / 5); }
     .cab.sl-k-classic { --cell: calc((100vw - 90px) / 3); }
+    .cab.sl-k-x6 { --cell: calc((100vw - 92px) / 6); }
+    #game-slots .lobby { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .marquee .sub { font-size: 9.5px; letter-spacing: .06em; }
     .meter .lbl { font-size: 9px; letter-spacing: .08em; }
     .deck { gap: 5px; }
@@ -788,6 +807,7 @@
       <button data-game="roulette">Roulette</button>
       <button data-game="slots">Slots</button>
       <button data-game="rewards">Rewards</button>
+      <button data-game="tourney"><span class="long">Tournament</span><span class="short">Tourney</span></button>
       <button data-game="players">Players</button>
     </nav>
     <div class="rank" id="rankBox">
@@ -800,6 +820,7 @@
         <div class="amt" id="bank">0</div>
         <div class="lbl" id="bankLbl">chips</div>
         <button class="mode" id="modeBtn" hidden></button>
+        <button class="mode tnb" id="tnBadge" hidden></button>
       </div>
       <button class="bell" id="sndBtn" aria-label="Sound" title="Sound effects on/off">&#128264;</button>
       <div class="bellwrap">
@@ -986,6 +1007,20 @@
       <h3 id="bjRulesTitle">Rules in force</h3>
       <table id="bjRules"></table>
     </div>
+  </section>
+
+  <!-- ===================== TOURNAMENT ===================== -->
+  <section id="game-tourney" hidden>
+    <div class="panel">
+      <div class="lb-head"><h3 style="margin:0">Weekly Tournament</h3><div class="sub" id="tnEnds"></div></div>
+      <div id="tnEntry"></div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      <div class="lb-head"><h3 style="margin:0">Standings</h3><div class="lb-tabs" id="tnTabs"></div></div>
+      <div id="tnBody"></div>
+      <p class="sub" id="tnNote" style="margin:10px 0 0"></p>
+    </div>
+    <div class="panel" style="margin-top:14px"><h3 style="margin:0 0 6px">How it works</h3><div id="tnRules" class="sub"></div></div>
   </section>
 
   <!-- ===================== PLAYERS ===================== -->
@@ -1668,7 +1703,8 @@ function renderBank() {
   $('slCredits').textContent = v.toLocaleString();
   if (railShown === v) return;
   railShown = v;
-  const html = `<div><div class="lbl">Your chips</div><div class="amt">${v.toLocaleString()}</div></div>` +
+  renderTnBadge();
+  const html = `<div><div class="lbl">${online() && tnOn() ? 'Tournament chips' : 'Your chips'}</div><div class="amt">${v.toLocaleString()}</div></div>` +
     pileHTML(v, { max: 6, counts: true });
   $('bjRail').innerHTML = html;
   $('tcpRail').innerHTML = html;
@@ -1761,7 +1797,7 @@ function tcpDecision(bets, dealt) {
  * empty table between hands.
  */
 function tcpRestore(note) {
-  const r = online() ? ON.tcp.round : S.tcpRound;
+  const r = online() ? G().tcp.round : S.tcpRound;
   clearResults(); renderBets(); renderStats(); renderLog(); renderBank();
   $('hint').textContent = '';
   if (r) {
@@ -2002,13 +2038,17 @@ const BJ_TABLES = {
 };
 let bjTable = 'bj';
 let ON = null;                        // online play state (see ONLINE PLAY); null = offline
+/** Tournament mode: online, every table plays your tournament entry instead of your wallet (see TOURNAMENTS). */
+function tnOn() { return !!(online() && ON.tn && ON.tn.on && ON.tn.entry); }
+/** The online game state in use: the wallet's tables (ON), or the tournament entry's (ON.tn.g). */
+function G() { return ON && ON.tn && (ON.tn.loading || tnOn()) ? ON.tn.g : ON; }
 const T = () => BJ_TABLES[bjTable];   // current table definition
 // Current table state: this browser's save offline, the server's view online.
-const TS = () => (online() ? ON.ts[bjTable] : S[bjTable]);
+const TS = () => (online() ? G().ts[bjTable] : S[bjTable]);
 // Chips the blackjack tables play with: S.chips offline, the server wallet online.
-const bankroll = () => (online() ? ON.wallet.chips : S.chips);
+const bankroll = () => (online() ? (tnOn() ? ON.tn.entry.chips : ON.wallet.chips) : S.chips);
 /** Three Card Poker bets, stats and history for the current mode (display; online, the server holds the hand). */
-const TCPS = () => (online() ? ON.tcp : S);
+const TCPS = () => (online() ? G().tcp : S);
 const BJ_OUTCOME = { blackjack: 'Blackjack', win: 'Win', push: 'Push', lose: 'Lose', bust: 'Bust' };
 const BJ_SIDE_KEYS = Object.keys(BJ.SIDE_BETS);
 const BJ_SIDE_NAME = { perfectPairs: 'Perfect Pairs', twentyOnePlus3: '21+3', potOfGold: 'Pot of Gold' };
@@ -2481,7 +2521,7 @@ function bjRenderRules() {
 /* ---------- table switching ---------- */
 
 function showGame(g) {
-  S.game = BJ_TABLES[g] || ['rewards', 'home', 'slots', 'players', 'roulette'].includes(g) ? g : 'tcp';
+  S.game = BJ_TABLES[g] || ['rewards', 'home', 'slots', 'players', 'roulette', 'tourney'].includes(g) ? g : 'tcp';
   const isBj = !!BJ_TABLES[S.game];
   $('game-bj').hidden = !isBj;
   $('game-tcp').hidden = S.game !== 'tcp';
@@ -2492,6 +2532,8 @@ function showGame(g) {
   $('game-roulette').hidden = S.game !== 'roulette';
   if (S.game === 'roulette') rlRender();
   if (S.game === 'players') lbShow();
+  $('game-tourney').hidden = S.game !== 'tourney';
+  if (S.game === 'tourney') tnShow();
   $('game-home').hidden = S.game !== 'home';
   if (S.game === 'rewards') econRenderRewards();
   if (S.game === 'home') renderHome();
@@ -2530,7 +2572,7 @@ const E = () => ACCT().econ;   // the active economy state (offline save, or the
 
 const econLevel = () => ECON.levelOf(ACCT());
 const econTier = () => ECON.tierOf(ACCT());
-const econMaxBet = () => ECON.TIERS[econTier()].maxBet;
+const econMaxBet = () => (tnOn() ? ECON.TOURNEY.maxBet : ECON.TIERS[econTier()].maxBet);
 
 /** The ONLY way chips enter or leave outside a game. Recorded in the ledger. */
 function econGrant(kind, amount) { ECON.grant(PLAYER, kind, amount); }
@@ -2633,7 +2675,7 @@ function renderHome() {
   const todo = [];
   const un = econUnclaimed();
   for (const { q, i } of un) {
-    const r = q.reward || ECON.questReward(E().quests.tier, t);
+    const r = q.reward || ECON.questReward(E().quests.tier, t, q);
     todo.push(`<div class="item2"><span class="ic">${NOTE_ICON.quest}</span><div class="tx"><strong>Quest reward</strong>${ECON.questText(q)}</div>` +
       `<button class="btn-sm" data-claim="${i}" data-day="${E().quests.day}">Claim ${r.chips.toLocaleString()}</button></div>`);
   }
@@ -2646,6 +2688,12 @@ function renderHome() {
   if (econRescueReady()) {
     todo.push(`<div class="item2"><span class="ic">${NOTE_ICON.rescue}</span><div class="tx"><strong>Rescue Wheel</strong>Free while you're under ${ECON.WHEELS.rescue.availableBelow} chips.</div>` +
       `<button class="btn-sm" data-go="rewards">Spin</button></div>`);
+  }
+  const te = online() && ON.tn && ON.tn.entry && TNB.data && ON.tn.entry;
+  if (te && !te.finished) {
+    todo.push(`<div class="item2"><span class="ic">&#127942;</span><div class="tx"><strong>Weekly tournament</strong>` +
+      `${te.entered ? `${te.rounds}/${te.of} rounds played, stack ${te.chips.toLocaleString()}.` : `Same ${ECON.TOURNEY.stack.toLocaleString()} chips for everyone; prizes in real chips.`}</div>` +
+      '<button class="btn-sm" data-go="tourney">Play</button></div>');
   }
   for (const e of ECON.activeEvents(t)) {
     todo.push(`<div class="item2"><span class="ic">${NOTE_ICON.event}</span><div class="tx"><strong>${e.name}</strong>${e.desc}</div></div>`);
@@ -2672,13 +2720,13 @@ function renderHome() {
   const qs = E().quests;
   const rw = ECON.questReward(qs.tier, t);
   $('homeQuests').innerHTML = qs.list.map((q, i) => {
-    const r = q.reward || rw;
+    const r = q.reward || ECON.questReward(qs.tier, t, q);
     const right = q.claimed ? '<span class="st">&#10003; claimed</span>'
       : q.done ? `<button class="btn-sm" data-claim="${i}" data-day="${qs.day}">Claim ${r.chips.toLocaleString()}</button>`
       : `<span class="st">${q.progress}/${q.target}</span>`;
-    return `<div class="mini-quest"><div class="tx">${ECON.questText(q)}` +
+    return `<div class="mini-quest"><div class="tx">${ECON.isHard(q) ? '<span class="qhard">CHALLENGE</span>' : ''}${ECON.questText(q)}` +
       `<div class="qbar"><div style="width:${(100 * q.progress / q.target).toFixed(0)}%"></div></div></div>${right}</div>`;
-  }).join('') + `<div class="hint">${r0(rw.chips)} chips + ${rw.xp} XP each. <a href="#" data-go="rewards">All rewards</a></div>`;
+  }).join('') + `<div class="hint">${r0(rw.chips)} chips + ${rw.xp} XP each; the challenge pays ${ECON.CHALLENGE_MULT}x. <a href="#" data-go="rewards">All rewards</a></div>`;
 
   const feed = S.econ.notes.slice(-6).reverse();
   $('homeFeed').innerHTML = feed.length
@@ -2829,9 +2877,9 @@ function renderAccount() {
   const el = $('homeAccount');
   if (!el) return;
   const note = auth
-    ? '<div class="sub">Signed in, Blackjack and Free Bet play online: a server wallet that started at ' + RULES.startingChips.toLocaleString() +
-      ' chips, dealt on the server so nobody can edit chips or peek at cards. Poker, wheels, quests and the vault stay on this browser\'s chips for now; the Online/Offline button under your chips switches.</div>'
-    : '<div class="sub">Signing in starts online play for Blackjack and Free Bet with a fresh ' + RULES.startingChips.toLocaleString() +
+    ? '<div class="sub">Signed in, every game plays online: a server wallet that started at ' + RULES.startingChips.toLocaleString() +
+      ' chips, dealt on the server so nobody can edit chips or peek at cards. Rewards, the weekly tournament and the leaderboard are online too; the Online/Offline button under your chips switches.</div>'
+    : '<div class="sub">Signing in starts online play for every game with a fresh ' + RULES.startingChips.toLocaleString() +
       '-chip server wallet. Your offline chips here stay as they are.</div>';
   const msg = acct.msg ? `<div class="sub lost">${acct.msg}</div>` : '';
   let html = '<h3>Your account</h3>';
@@ -2899,7 +2947,7 @@ function blankRl() {
            stats: { spins: 0, wagered: 0, returned: 0, net: 0, expNet: 0, wins: 0, red: 0, black: 0, green: 0 } };
 }
 /** Roulette state for the current mode (online: display stats, the server's seq and recent numbers). */
-function RLS() { return online() ? ON.rl : S.rl; }
+function RLS() { return online() ? G().rl : S.rl; }
 const rlW = () => ROULETTE.WHEELS[RLS().wheel];
 let rlUndoStack = [];                    // UI only
 let rlDeg = { wheel: 0, ball: 0 };       // display only: where the wheel and ball were left
@@ -3200,7 +3248,7 @@ function lbRender() {
     const v = b.val(p);
     return `<div class="lb-row${p.mine ? ' me' : ''}" data-lbp="${i}"><div class="lb-pos p${i + 1}">${i < 3 ? medal[i] : i + 1}</div>` +
       `${avatarHTML(p.avatar, p.equipped.frame)}<div class="lb-who"><strong>${escHTML(p.name)}${p.mine ? ' <span class="sub">(you)</span>' : ''}</strong>` +
-      `<span class="sub">${p.title ? escHTML(p.title) + ' &middot; ' : ''}Lv ${p.level} ${escHTML(p.tier)}</span></div>` +
+      `<span class="sub">${p.title ? escHTML(p.title) + ' &middot; ' : ''}Lv ${p.level} ${escHTML(p.tier)}${tnTrophyText(p.trophies) ? ' &middot; ' + tnTrophyText(p.trophies) : ''}</span></div>` +
       `<div class="lb-val${v < 0 || (b.id === 'losses' && v > 0) ? ' neg' : ''}">${b.fmt(v, p)}</div></div>`;
   }).join('') || '<p class="sub">No players yet.</p>';
   const ends = LB.data.weekEnds ? ` The week resets in ${fmtWait(Date.parse(LB.data.weekEnds) - Date.now())}.` : '';
@@ -3225,11 +3273,168 @@ function lbCard(i) {
     stat('Biggest win', p.bestWin.toLocaleString()) + stat('Jackpots', p.jpCount ? `${p.jpTotal.toLocaleString()} (${p.jpCount})` : 'none yet') +
     stat('All-time gains', '+' + (p.gains || 0).toLocaleString()) + stat('All-time losses', '-' + (p.losses || 0).toLocaleString()) +
     stat('All-time net', ((p.allNet || 0) > 0 ? '+' : '') + (p.allNet || 0).toLocaleString()) +
-    stat('XP', p.xp.toLocaleString()) + '</div>' +
+    stat('XP', p.xp.toLocaleString()) +
+    stat('Tournament trophies', tnTrophyText(p.trophies) || 'none yet') + '</div>' +
     `<div class="pcos">Table: <span><span class="sw" style="background:radial-gradient(ellipse at 50% 0%, ${(felt.colors || ['#0f4034'])[0]}, ${(felt.colors || ['', '#0a2c24'])[1]})"></span>${escHTML(felt.name || '')}</span>` +
     `<span>Cards: <span class="sw" style="background:repeating-linear-gradient(45deg, ${(back.colors || ['#2a4d8f'])[0]} 0 5px, ${(back.colors || ['', '#1e3a6e'])[1]} 5px 10px)"></span>${escHTML(back.name || '')}</span>` +
     `<span>Frame: ${escHTML(frame.name || 'none')}</span></div>` +
     '<p class="sub" style="margin:10px 0 0">Cosmetics are bought with chips in the Rewards shop and change nothing about play.</p>';
+}
+
+/* ===========================================================================
+   TOURNAMENTS (online only; rules in economy.js, run by the server)
+   ---------------------------------------------------------------------------
+   One a week. Everyone gets the same tournament stack, limit and number of
+   rounds; the biggest stack after every round wins real-chip prizes. In
+   tournament mode G() points at ON.tn.g, a second set of online tables, and
+   bankroll() at the entry's stack, so every game plays the entry through the
+   same code; onCall() adds the week to each deal/act. The page never moves
+   a tournament chip either: the server plays the entry and sends it back.
+   =========================================================================== */
+
+/** A fresh set of online table states for a tournament entry (display stats start empty). */
+function tnBlankSet() {
+  const g = { ts: {} };
+  for (const t of ONLINE_GAMES) { const b = blankBj(); b.seq = 0; g.ts[t] = b; }
+  const tb = blankState();
+  g.tcp = { seq: 0, round: null, last: null, bets: tb.bets, stats: tb.stats, history: [] };
+  g.slots = mergeSlots(undefined);
+  for (const id of SLOTS.MACHINE_IDS) { g.slots.m[id].free = null; g.slots.m[id].last = null; g.slots.m[id].seq = 0; }
+  g.rl = Object.assign(blankRl(), { bets: {}, recent: [], seq: { american: 0, european: 0 } });
+  return g;
+}
+
+/** Copy an entry and its table views (the server's) into the tournament set. */
+function tnLoad(entry) {
+  if (!ON || !ON.tn || !entry) return;
+  if (ON.tn.entry && ON.tn.entry.week !== entry.week) ON.tn.g = tnBlankSet();   // a new week: a new entry
+  ON.tn.entry = entry;
+  ON.tn.loading = true;
+  try {
+    const v = entry.tables;
+    for (const t of ONLINE_GAMES) onApply(t, v[t]);
+    onTcpApply(v.tcp);
+    for (const id of SLOTS.MACHINE_IDS) onSlotApply(id, v['slot_' + id]);
+    for (const wid of ROULETTE.WHEEL_IDS) onRlApply(wid, v['rl_' + wid]);
+  } finally { ON.tn.loading = false; }
+}
+
+/** Switch every table to the tournament entry (on) or back to your chips (off). */
+function tnSet(on) {
+  if (!online() || !ON.tn || ON.busy || animBusy()) return;
+  if (on && !ON.tn.entry) return;
+  ON.tn.on = on;
+  onRefreshUI();
+  toast('info', on ? 'Tournament mode' : 'Back to your chips',
+    on ? `Every table now plays your tournament stack (${ON.tn.entry.chips.toLocaleString()}). Pick a game.`
+       : 'Every table uses your own online chips again. Your tournament entry is saved.');
+}
+
+/** Medals for a profile card: "🥇2 🥉1", or '' with none. */
+function tnTrophyText(t) {
+  if (!Array.isArray(t)) return '';
+  const m = ['\u{1F947}', '\u{1F948}', '\u{1F949}'];
+  return t.map((n, i) => (n ? m[i] + n : '')).filter(Boolean).join(' ');
+}
+const tnOrdinal = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+
+const TNB = { data: null, at: 0, loading: false, msg: '', view: 'current' };
+
+async function tnLoadBoard(force) {
+  if (TNB.loading || !cloudOn() || !auth) return;
+  if (!force && TNB.data && Date.now() - TNB.at < 20000) return;
+  TNB.loading = true;
+  try {
+    const d = await onCall({ op: 'tourney' });
+    if (d && d.ok) {
+      TNB.data = d.tourney; TNB.at = Date.now();
+      TNB.msg = d.tourney ? '' : 'Tournaments aren\'t switched on yet (their database migration hasn\'t been applied).';
+      if (d.tourney && d.tourney.entry && ON && ON.tn && !ON.busy) tnLoad(d.tourney.entry);
+    } else TNB.msg = (d && d.message) || 'Couldn\'t load the tournament.';
+  } catch (e) { TNB.msg = 'Couldn\'t reach the server. Try again in a moment.'; }
+  TNB.loading = false;
+  if (S.game === 'tourney') tnRender();
+  renderTnBadge();
+}
+
+/** After sign-in: mention a prize waiting from last week. */
+function tnBootCheck() {
+  tnLoadBoard(true).then(() => {
+    const L = TNB.data && TNB.data.last, me = L && L.final && L.players.find(p => p.mine);
+    if (me && me.prize && !me.paid) toast('chips', 'Tournament prize waiting', `You finished ${tnOrdinal(me.place)} last week: ${me.prize.toLocaleString()} chips. Claim it on the Tournament tab.`);
+  });
+}
+
+function tnShow() { tnRender(); tnLoadBoard(false); }
+
+async function tnClaim(week) {
+  const d = await onEcon({ op: 'tnClaim', week });
+  if (!d) return;
+  if (d.ok) {
+    toast('chips', `Tournament: ${tnOrdinal(d.prize.place)} place`, `+${d.prize.prize.toLocaleString()} chips${d.prize.place <= 3 ? ' and a trophy for your profile' : ''}.`);
+    sfx('win');
+  } else $('tnNote').textContent = d.message || 'Couldn\'t claim that.';
+  tnLoadBoard(true);
+}
+
+function tnRender() {
+  const C = ECON.TOURNEY;
+  $('tnRules').innerHTML = `<p style="margin:0 0 6px">Once a week, everyone gets the same <strong>${C.stack.toLocaleString()} tournament chips</strong> ` +
+    `and plays <strong>${C.rounds} rounds</strong> of any game, with a <strong>${C.maxBet.toLocaleString()}</strong> limit per bet (per spin at the slots) for everyone, whatever your rank. ` +
+    `Play all ${C.rounds} rounds to place; the biggest stack wins. Ties share a place.</p>` +
+    '<div class="tn-prizes">' + C.prizes.map((p, i) => `<span>${['\u{1F947}', '\u{1F948}', '\u{1F949}'][i]} ${p.toLocaleString()}</span>`).join('') +
+    `<span>4th-${C.placesPaid}th ${C.placePrize.toLocaleString()}</span><span>every other finisher ${C.finisherPrize.toLocaleString()}</span></div>` +
+    '<p style="margin:6px 0 0">Prizes are real chips, paid when the week closes (Sunday midnight Eastern); the top three also win a trophy for your profile card. ' +
+    'Tournament chips are separate from yours: they can\'t be cashed, and tournament rounds earn no XP, quest progress or jackpots. ' +
+    'The games are exactly the same games, with the same odds and the same code.</p>';
+  $('tnTabs').innerHTML = [['current', 'This week'], ['last', 'Last week']].map(([k, n]) => `<button data-tnv="${k}" class="${TNB.view === k ? 'on' : ''}">${n}</button>`).join('');
+  if (!cloudOn() || !auth) {
+    $('tnEnds').textContent = '';
+    $('tnEntry').innerHTML = '<p class="sub" style="margin:10px 0 0">Tournaments are for signed-in players: the server deals every round, so nobody can edit their stack. ' +
+      '<a href="#" onclick="showGame(\'home\');return false">Sign in on Home</a> to enter.</p>';
+    $('tnBody').innerHTML = ''; $('tnNote').textContent = '';
+    return;
+  }
+  const e = ON && ON.tn && ON.tn.entry;
+  $('tnEnds').textContent = e ? `Ends in ${fmtWait(Date.parse(e.ends) - Date.now())}` : '';
+  if (!TNB.data) {
+    $('tnEntry').innerHTML = `<p class="sub" style="margin:10px 0 0">${TNB.msg || 'Loading\u2026'}</p>`;
+    $('tnBody').innerHTML = ''; $('tnNote').textContent = '';
+    return;
+  }
+  if (!online() || !e) {
+    $('tnEntry').innerHTML = '<p class="sub" style="margin:10px 0 0">Switch to <strong>Online</strong> (the button under your chips) to play the tournament.</p>';
+  } else {
+    const pct = Math.min(100, 100 * e.rounds / e.of);
+    const status = e.finished ? `<p class="sub" style="margin:0">Done: you played all ${e.of} rounds. Final stack ${e.chips.toLocaleString()}. Results are final when the week closes.</p>`
+      : e.rounds >= e.of ? '<p class="sub" style="margin:0">All rounds played: finish the round you have open.</p>'
+      : `<p class="sub" style="margin:0">${e.of - e.rounds} round${e.of - e.rounds === 1 ? '' : 's'} to go. Every round of any game counts (free spins don't).</p>`;
+    const btn = tnOn() ? '<button class="btn-sm ghost" data-tnset="0">Back to my chips</button>'
+      : e.finished ? '' : `<button class="btn-sm" data-tnset="1">${e.entered ? 'Keep playing' : 'Enter the tournament'}</button>`;
+    $('tnEntry').innerHTML = '<div class="tn-entry">' +
+      `<div><div class="k">Tournament stack</div><div class="v">${e.chips.toLocaleString()}</div></div>` +
+      `<div><div class="k">Rounds</div><div class="v">${e.rounds} / ${e.of}</div></div>` +
+      `<div><div class="k">Limit per bet</div><div class="v">${e.maxBet.toLocaleString()}</div></div></div>` +
+      `<div class="tn-bar"><div style="width:${pct.toFixed(0)}%"></div></div>` + status +
+      `<div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">${btn}` +
+      (tnOn() ? '<span class="sub">Every table is playing your tournament stack. Pick a game from the tabs.</span>' : '') + '</div>';
+  }
+  const W = TNB.view === 'last' ? TNB.data.last : TNB.data.current;
+  if (!W || !W.players.length) {
+    $('tnBody').innerHTML = `<p class="sub" style="margin:10px 0 0">${TNB.view === 'last' ? 'Nobody played last week.' : 'Nobody has entered yet this week. Be the first.'}</p>`;
+  } else {
+    const medal = ['\u{1F947}', '\u{1F948}', '\u{1F949}'];
+    $('tnBody').innerHTML = W.players.map(p => {
+      const pos = p.place ? (p.place <= 3 ? medal[p.place - 1] : p.place) : '&ndash;';
+      const claim = W.final && p.mine && p.prize && !p.paid ? ` <button class="btn-sm" data-tnclaim="${W.week}">Claim ${p.prize.toLocaleString()}</button>` : '';
+      const prize = p.place ? `${W.final ? (p.paid ? 'won' : 'wins') : 'would win'} ${p.prize.toLocaleString()}` : `${p.rounds}/${ECON.TOURNEY.rounds} rounds`;
+      return `<div class="lb-row${p.mine ? ' me' : ''}"><div class="lb-pos p${p.place || 0}">${pos}</div>` +
+        `${avatarHTML(p.avatar, 'frame-none')}<div class="lb-who"><strong>${escHTML(p.name)}${p.mine ? ' <span class="sub">(you)</span>' : ''}</strong>` +
+        `<span class="sub">${prize}${claim}</span></div><div class="lb-val">${p.chips.toLocaleString()}</div></div>`;
+    }).join('');
+  }
+  $('tnNote').innerHTML = W ? `${W.final ? 'Final results.' : 'Live: places count only entries that have played every round.'} ` +
+    `${W.finishers} finished. <a href="#" onclick="tnLoadBoard(true);return false">Refresh</a>` : '';
 }
 
 /* ===========================================================================
@@ -3311,18 +3516,29 @@ function mergeSlots(p) {
 function slotsNet(s) { return SLOTS.MACHINE_IDS.reduce((n, id) => n + s.slots.m[id].stats.net, 0); }
 
 /** Slots state for the current mode (online: display stats + the server's feature state). */
-function SLS() { return online() ? ON.slots : S.slots; }
+function SLS() { return online() ? G().slots : S.slots; }
 const slotM = () => SLOTS.MACHINES[SLS().machine];
 const slotST = () => SLS().m[SLS().machine];
 
-const SL_PREVIEW = { gilded: ['seven', 'crown', 'seven'], galleon: ['captain', 'wild', 'chest'], lantern: ['dragon', 'wild', 'firework'] };
+const SL_PREVIEW = { gilded: ['seven', 'crown', 'seven'], galleon: ['captain', 'wild', 'chest'], lantern: ['dragon', 'wild', 'firework'], forge: ['golem', 'hammer', 'volcano'] };
 const SL_LINE_COLORS = ['#ff3b3b', '#ffd23b', '#3bff7a', '#3bd2ff', '#ff6bd6', '#ff9a3b', '#b38bff', '#7affea', '#ffffff', '#c6ff3b'];
 let slFx = 0;         // display only: a new spin cancels the previous spin's win show
 let slAuto = 0;       // auto spins left (UI only: each one is an ordinary spin)
 let slTimers = [];    // display only: pending win-show timers
 
-const slotKindLabel = (m) => m.kind === 'classic' ? '3 reels, 1 line' : m.kind === 'lines' ? `5 reels, ${m.lines.length} lines` : '5 reels, 243 ways';
-const slotVol = (m) => (m.par.sd >= 3 ? 'High' : m.par.sd >= 1.3 ? 'Medium' : 'Low');
+const slotKindLabel = (m) => m.kind === 'classic' ? '3 reels, 1 line' : m.kind === 'lines' ? `5 reels, ${m.lines.length} lines` : `${m.reels.length} reels, ${(m.rows ** m.reels.length).toLocaleString()} ways`;
+const slotVol = (m) => (m.par.sd >= 8 ? 'Very high' : m.par.sd >= 3 ? 'High' : m.par.sd >= 1.3 ? 'Medium' : 'Low');
+/** Window rows relative to the stop: the stop sits in the second row (rows -1 .. rows-2). */
+const slotOffs = (m) => Array.from({ length: m.rows || 3 }, (_, k) => k - 1);
+/** "reels 1, 3, 5" / "reels 2 to 5": where a symbol can land, from the strips themselves. */
+function slotReelsWith(m, symIdx) {
+  const on = m.reels.map((r, i) => (r.stops.includes(symIdx) ? i + 1 : 0)).filter(Boolean);
+  const run = on.length > 2 && on.every((x, k) => k === 0 || x === on[k - 1] + 1);
+  return on.length === m.reels.length ? 'any reel' : run ? `reels ${on[0]} to ${on[on.length - 1]}` : `reels ${on.join(', ')}`;
+}
+const slotFeatureLine = (m) => m.free.climb
+  ? `starts at x${m.free.mult} and climbs +${m.free.climb} after every winning free spin (up to x${m.free.maxMult})`
+  : `all wins x${m.free.mult}`;
 const symName = (m, i) => m.symbols[i].name;
 
 /* ---------- spin ---------- */
@@ -3362,7 +3578,7 @@ function slotRecord(st, res, wasFree) {
   t.net += res.win + jw - res.cost;
   if (jw) t.jackpots = (t.jackpots || 0) + (res.jackpots || []).length;
   if (res.win + jw > t.biggest) t.biggest = res.win + jw;
-  st.last = { stops: res.stops, win: res.win, cost: res.cost };
+  st.last = { stops: res.stops, win: res.win, cost: res.cost, jackpotWin: jw };
   st.history.push({ t: Date.now(), level: st.level, stops: res.stops.join(','), cost: res.cost, win: res.win, free: wasFree, award: res.award });
   if (st.history.length > 2000) st.history.splice(0, st.history.length - 2000);
 }
@@ -3377,7 +3593,7 @@ function slotCell(m, reel, stop, id) {
 /** Static reels at these stops (no motion). */
 function slotDrawReels(m, stops) {
   $('slReels').innerHTML = m.reels.map((r, i) =>
-    `<div class="reel" id="slReel${i}"><div class="strip" id="slStrip${i}">${[-1, 0, 1].map(j => slotCell(m, i, stops[i] + j, `slC${i}_${j + 1}`)).join('')}</div></div>`).join('');
+    `<div class="reel" id="slReel${i}"><div class="strip" id="slStrip${i}">${slotOffs(m).map(j => slotCell(m, i, stops[i] + j, `slC${i}_${j + 1}`)).join('')}</div></div>`).join('');
   $('slReels').classList.remove('showing');
   $('slLines').innerHTML = '';
 }
@@ -3399,16 +3615,18 @@ function slotAnimate(m, res, from) {
   for (let i = 0; i < m.reels.length; i++) {
     durs.push(base + step * i + extra);
     if (m.free) {
-      for (let j = 0; j < 3; j++) if (res.grid[i * 3 + j] === m.scatterIdx) seen++;
+      const rows = m.rows || 3;
+      for (let j = 0; j < rows; j++) if (res.grid[i * rows + j] === m.scatterIdx) seen++;
       if (seen >= m.free.trigger - 1 && i < m.reels.length - 1) extra += 650;
     }
   }
+  const offs = slotOffs(m), nr = offs.length;
   $('slReels').innerHTML = m.reels.map((r, i) => {
     const s = res.stops[i], p = from[i];
-    const cells = [-1, 0, 1].map(j => slotCell(m, i, s + j, `slC${i}_${j + 1}`));
-    for (let k = 0; k < K; k++) cells.push(slotCell(m, i, s + 2 + k));
-    for (const j of [-1, 0, 1]) cells.push(slotCell(m, i, p + j));
-    return `<div class="reel" id="slReel${i}"><div class="strip spinning" id="slStrip${i}" style="transform:translateY(-${(100 * (K + 3) / (K + 6)).toFixed(4)}%)">${cells.join('')}</div></div>`;
+    const cells = offs.map(j => slotCell(m, i, s + j, `slC${i}_${j + 1}`));
+    for (let k = 0; k < K; k++) cells.push(slotCell(m, i, s + nr - 1 + k));
+    for (const j of offs) cells.push(slotCell(m, i, p + j));
+    return `<div class="reel" id="slReel${i}"><div class="strip spinning" id="slStrip${i}" style="transform:translateY(-${(100 * (K + nr) / (K + 2 * nr)).toFixed(4)}%)">${cells.join('')}</div></div>`;
   }).join('');
   $('slReels').classList.remove('showing');
   $('slLines').innerHTML = '';
@@ -3459,10 +3677,20 @@ function slotShow(m, res, econLines) {
 function slotRevealWins(m, res, econLines, fx) {
   const unit = res.win && res.wins.length ? res.wins[0].chips / res.wins[0].pay : 0;
   const lines = [];
+  for (const i of res.expanded || []) {
+    $('slReel' + i).classList.add('xreel');
+    for (let j = 0; j < m.rows; j++) {
+      if (res.grid[i * m.rows + j] === m.scatterIdx) continue;   // a scatter stays put, and still counts
+      const c = $(`slC${i}_${j}`);
+      c.innerHTML = SLOT_ART.html(m.id, m.wild);
+      c.classList.add('xcell');
+    }
+  }
+  if ((res.expanded || []).length) { lines.push(`${symName(m, m.wildIdx).replace(/ \(wild\)/, '')} expands on reel${res.expanded.length > 1 ? 's' : ''} ${res.expanded.map(i => i + 1).join(', ')}`); sfx('tease'); }
   const reels = $('slReels');
   if (res.wins.length) {
     reels.classList.add('showing');
-    for (let i = 0; i < m.reels.length; i++) for (let j = 0; j < 3; j++) $(`slC${i}_${j}`).classList.add('dim');
+    for (let i = 0; i < m.reels.length; i++) for (let j = 0; j < (m.rows || 3); j++) $(`slC${i}_${j}`).classList.add('dim');
     for (const w of res.wins) for (const [i, j] of w.cells) { const c = $(`slC${i}_${j}`); c.classList.remove('dim'); c.classList.add('win'); }
     slotDrawLines(m, res.wins.filter(w => w.kind === 'line' && m.kind === 'lines'));
     $('slCab').classList.add('won');
@@ -3480,7 +3708,7 @@ function slotRevealWins(m, res, econLines, fx) {
   slotCountUp(res.win + (res.jackpotWin || 0), fx);
   const bet = SLOTS.totalBet(m, slotST().level);
   let banner = null;
-  if (res.award && res.cost) banner = [`${res.award} Free Spins`, `All wins x${m.free.mult}`];
+  if (res.award && res.cost) banner = [`${res.award} Free Spins`, m.free.climb ? `Starts x${m.free.mult}, climbs every win` : `All wins x${m.free.mult}`];
   else if (res.award) banner = [`+${res.award} Free Spins`, 'Retrigger!'];
   else if (res.featureWon != null) banner = ['Feature win', res.featureWon.toLocaleString() + ' chips'];
   else if (res.win >= 50 * bet) banner = ['Mega win', res.win.toLocaleString()];
@@ -3542,7 +3770,7 @@ function slotMeters() {
     : m.kind === 'lines' ? `${st.level} x ${m.bet.lines} lines` : m.kind === 'ways' ? `${st.level} x ${m.bet.units}` : '1 line';
   const f = $('slFree');
   f.hidden = !free;
-  if (free) f.textContent = `Free spins: ${free.left} left of ${free.total} · all wins x${free.mult} · won ${free.won.toLocaleString()}`;
+  if (free) f.textContent = `Free spins: ${free.left} left of ${free.total} · ${m.free.climb ? 'multiplier' : 'all wins'} x${free.mult}${m.free.climb && free.mult < m.free.maxMult ? ' (climbs on every win)' : ''} · won ${free.won.toLocaleString()}`;
   renderBank();
 }
 
@@ -3587,7 +3815,7 @@ function slotRender() {
     return `<button class="sl-card sl-t-${k}${k === id ? ' on' : ''}" data-slot="${k}"><div class="mini">${SL_PREVIEW[k].map(x => SLOT_ART.html(k, x)).join('')}</div>` +
       `<div class="nm">${mm.name}</div><div class="rtp">${(100 * mm.par.rtp).toFixed(2)}% RTP &middot; ${slotKindLabel(mm)}</div></button>`;
   }).join('');
-  $('slCab').className = `cab sl-t-${id} sl-k-${m.kind}`;
+  $('slCab').className = `cab sl-t-${id} sl-k-${m.kind}${m.reels.length === 6 ? ' sl-k-x6' : ''}`;
   $('slTitle').textContent = m.name;
   $('slSub').textContent = m.tagline;
   const bulbs = '<i class="bulb"></i>'.repeat(m.kind === 'classic' ? 16 : 22);
@@ -3647,7 +3875,7 @@ function jpInfo() {
   const v = jpView(), tiers = jpTiers();
   if (typeof JACKPOT !== 'object') return;
   const pct = (100 * JACKPOT.totalRate()).toFixed(2);
-  let h = `<p class="sub" style="margin:0 0 8px">Four jackpots linked across all three machines and every online player. Each paid spin puts ${pct}% of its bet onto the meters (free spins add nothing). ` +
+  let h = `<p class="sub" style="margin:0 0 8px">Four jackpots linked across every machine and every online player. Each paid spin puts ${pct}% of its bet onto the meters (free spins add nothing). ` +
     'Mini and Minor are <strong>must-hit-by</strong>: each is certain to drop before its cap, at a point drawn at random when it resets, between the meter and the cap. ' +
     'We publish a SHA-256 commitment to that point and reveal it when it drops, so you can check it was fixed in advance (a real casino keeps it secret). ' +
     'Major and Grand are <strong>mystery</strong> jackpots: every paid spin has a chance of chips-bet in the odds, the same for everyone.</p>';
@@ -3696,12 +3924,13 @@ function slotPaytable() {
     for (const sym of [...m.symbols].reverse()) {
       const p = m.pays[sym.id];
       if (!p) continue;
-      out.push(`<div class="pt-item">${art(sym.id)}<div class="pays">5 &nbsp;${c(p[2] * L)}<br>4 &nbsp;${c(p[1] * L)}<br>3 &nbsp;${c(p[0] * L)}</div></div>`);
+      out.push(`<div class="pt-item">${art(sym.id)}<div class="pays">${p.map((x, k) => `${k + 3} &nbsp;${c(x * L)}`).reverse().join('<br>')}</div></div>`);
     }
     const tb = SLOTS.totalBet(m, L);
     const sp = m.scatterPays.map((x, n) => [n, x]).filter(([, x]) => x > 0).map(([n, x]) => `${n}: ${c(x * tb)}`).join(', ');
-    out.push(`<div class="pt-item wide">${art(m.scatter)}<div class="pays">${m.free.trigger}+ anywhere${m.kind === 'ways' ? ' (reels 1, 3, 5)' : ''}: ${m.free.spins} free spins, all wins x${m.free.mult}. Retriggers.<br>Scatter pays ${sp} (x total bet)</div></div>`);
-    out.push(`<div class="pt-item wide">${art(m.wild)}<div class="pays">Wild: substitutes for every symbol except the scatter.${m.kind === 'ways' ? ' Reels 2, 3, 4 only.' : ' Reels 2 to 5 only.'}</div></div>`);
+    const spins = m.free.awards ? m.free.awards.map((x, n) => [n, x]).filter(([, x]) => x > 0).map(([n, x]) => `${n} start ${x}`).join(', ') + ' free spins' : `${m.free.spins} free spins`;
+    out.push(`<div class="pt-item wide">${art(m.scatter)}<div class="pays">${m.free.trigger}+ anywhere (${slotReelsWith(m, m.scatterIdx)}): ${spins}; ${slotFeatureLine(m)}. Retriggers.<br>Scatter pays ${sp} (x total bet)</div></div>`);
+    out.push(`<div class="pt-item wide">${art(m.wild)}<div class="pays">Wild: substitutes for every symbol except the scatter. ${slotReelsWith(m, m.wildIdx).replace(/^r/, 'R')} only.${m.expanding ? ' Expands: one anywhere in the window turns its whole reel wild, so it counts on every row (a scatter on that reel still counts as a scatter).' : ''}</div></div>`);
     out.push(`<div class="pt-item wide"><div class="sub">${m.kind === 'lines'
       ? 'Line wins pay left to right from reel 1, highest win per line, at the line bet. All 20 lines always play:'
       : 'A symbol pays when it shows on adjacent reels from reel 1; each combination of positions is a way. Pays x bet unit, per way.'}</div></div>`);
@@ -3795,9 +4024,9 @@ function onSave() {
   } catch (e) { /* storage blocked: display stats just won't survive a reload */ }
 }
 
-/** Copy a server table view into ON.ts[t], in the shape the renderer reads. */
+/** Copy a server table view into G().ts[t], in the shape the renderer reads. */
 function onApply(t, view) {
-  const ts = ON.ts[t], rules = BJ_TABLES[t].rules;
+  const ts = G().ts[t], rules = BJ_TABLES[t].rules;
   ts.seq = view.seq;
   ts.round = view.round ? Object.assign({}, view.round, { rules }) : null;
   ts.last = view.last ? Object.assign({}, view.last, { rules }) : null;
@@ -3807,6 +4036,7 @@ function onApply(t, view) {
 
 /** POST to the table server. Returns its JSON, or throws on a network failure. */
 async function onCall(body) {
+  if (tnOn() && (body.op === 'deal' || body.op === 'act')) body = Object.assign({}, body, { tourney: ON.tn.entry.week });
   const token = await authToken();
   if (!token) return { ok: false, error: 'signed_out', message: 'Your sign-in expired. Send yourself a new link.' };
   const res = await fetch(CLOUD.url + '/functions/v1/play', {
@@ -3817,8 +4047,13 @@ async function onCall(body) {
   let data = null;
   try { data = await res.json(); } catch (e) { /* not JSON */ }
   if (!data) throw new Error('HTTP ' + res.status);
+  const ent = data.tourney && (data.tourney.week ? data.tourney : data.tourney.entry);
+  if (ent && ON && ON.tn && (!ON.tn.entry || ent.week >= ON.tn.entry.week)) ON.tn.entry = ent;
   return data;
 }
+
+/** The table views in a state reply for the bankroll in use (wallet or tournament entry). */
+function onTables(d) { return tnOn() ? (d.tourney && d.tourney.tables) || {} : d.tables; }
 
 /** After sign-in: load the wallet and both tables from the server. */
 async function onBoot() {
@@ -3829,6 +4064,7 @@ async function onBoot() {
   ON = { user: auth.user.id, on: mine.on !== false, wallet: null, busy: false, ts: {},
          events: [],        // economy events from the last game response, announced at settlement
          syncedDay: '' };   // last day we asked the server to roll the quests over
+  ON.tn = { on: false, loading: false, entry: null, g: tnBlankSet() };
   for (const t of ONLINE_GAMES) {
     const b = blankBj();
     if (mine[t]) {
@@ -3854,12 +4090,14 @@ async function onBoot() {
     const d = await onCall({ op: 'state' });
     if (!d.ok) throw new Error(d.message);
     ON.wallet = d.wallet;
-    for (const t of ONLINE_GAMES) onApply(t, d.tables[t]);
+    for (const t of ONLINE_GAMES) onApply(t, onTables(d)[t]);
     if (d.tables.tcp) onTcpApply(d.tables.tcp);
     for (const id of SLOTS.MACHINE_IDS) if (d.tables['slot_' + id]) onSlotApply(id, d.tables['slot_' + id]);
     for (const wid of ROULETTE.WHEEL_IDS) if (d.tables['rl_' + wid]) onRlApply(wid, d.tables['rl_' + wid]);
     onJackpot(d);
+    if (d.tourney) tnLoad(d.tourney);
     econAnnounce(d.events || []);   // e.g. yesterday's unclaimed quests, vault interest
+    tnBootCheck();
   } catch (e) {
     toast('info', 'Online play unavailable', 'Couldn\'t reach the table server, so the tables are using this browser\'s chips. Reload to try again.');
   }
@@ -3877,6 +4115,7 @@ function onStop() {
 function onToggle() {
   if (!ON || !ON.wallet || ON.busy || animBusy()) return;
   ON.on = !ON.on;
+  if (ON.tn) ON.tn.on = false;
   onSave();
   onRefreshUI();
   toast('info', ON.on ? 'Playing online' : 'Playing offline',
@@ -3893,16 +4132,29 @@ function renderMode() {
   b.title = online()
     ? 'Every table and Rewards run on the server, with server chips. Click to play offline with this browser\'s chips.'
     : 'Playing with this browser\'s chips. Click to play online.';
-  $('bankLbl').textContent = online() ? 'online chips' : 'chips';
+  $('bankLbl').textContent = tnOn() ? 'tournament chips' : online() ? 'online chips' : 'chips';
+  renderTnBadge();
+}
+
+/** The header badge while a tournament entry is in play: rounds so far; click to go back to your chips. */
+function renderTnBadge() {
+  const b = $('tnBadge');
+  if (!b) return;
+  b.hidden = !tnOn();
+  if (!tnOn()) return;
+  const e = ON.tn.entry;
+  b.textContent = `🏆 ${e.rounds}/${e.of}${e.finished ? ' done' : ''} · my chips`;
+  b.title = 'Playing your tournament entry. Click to go back to your own chips.';
 }
 
 /** Redraw everything that depends on which mode is on. */
 function onRefreshUI() {
   for (const t of ONLINE_GAMES) delete bjShown[t];   // don't animate from the other mode's cards
   railShown = null;
-  if (BJ_TABLES[S.game]) $('bjMsg').textContent = online() ? 'Playing online: your chips and the cards are on the server.' : '';
+  const where = tnOn() ? 'Tournament: you\'re playing your tournament stack, not your chips.' : 'Playing online: your chips and the cards are on the server.';
+  if (BJ_TABLES[S.game]) $('bjMsg').textContent = online() ? where : '';
   slAuto = 0; slotCancelFx();
-  if (!animBusy()) tcpRestore(online() ? 'Playing online: your chips and the cards are on the server.' : (S.tcpRound ? 'Your offline hand, as you left it.' : ''));
+  if (!animBusy()) tcpRestore(online() ? where : (S.tcpRound ? 'Your offline hand, as you left it.' : ''));
   renderBank(); econRenderHeader(); renderMode(); applyCosmetics(); renderNotes();
   showGame(S.game);
 }
@@ -3945,6 +4197,7 @@ function onRescueOdds() {
 }
 
 function onBrokeHint() {
+  if (tnOn()) return '<br><span class="sub">That\'s the end of your tournament stack. Your own chips are untouched.</span>';
   const below = ECON.WHEELS.rescue.availableBelow;
   if (ON.wallet.chips + ON.wallet.vault < below) {
     return '<br><span class="pushc">Out of online chips? <button class="btn-sm" onclick="onRescue()">Spin the Rescue Wheel</button> ' +
@@ -3986,7 +4239,7 @@ async function onAct(action) {
   if (ON.busy || !r || !BJ.legalActions(r, bankroll())[action]) return;
   const free = BJ.freeOffers(r);
   await onSend({ op: 'act', table: t, seq: ts.seq, action: action }, () => {
-    const st = ON.ts[t].stats;
+    const st = G().ts[t].stats;
     if (action === 'double') st[free.double ? 'freeDoubles' : 'doubles']++;
     if (action === 'split') st[free.split ? 'freeSplits' : 'splits']++;
     if (action === 'insure') st.insured++;
@@ -4018,7 +4271,7 @@ async function onSend(body, onOk) {
   }
   if (onOk) onOk();
   const prefix = d.shuffled ? 'New shoe shuffled. ' : '';
-  const ts = ON.ts[t];
+  const ts = G().ts[t];
   ON.events = d.events || [];   // what the economy did; bjSettle announces it with the result
   if (ts.round) { econAnnounce(ON.events.splice(0)); bjAfter(prefix); onSave(); }
   else if (ts.last) bjSettle(ts.last, prefix);   // records display stats, draws the result
@@ -4026,15 +4279,15 @@ async function onSend(body, onOk) {
 
 /* ---------- Three Card Poker online ---------- */
 
-/** Copy the server's TCP view into ON.tcp (dealer cards are null until the hand is over). */
+/** Copy the server's TCP view into G().tcp (dealer cards are null until the hand is over). */
 function onTcpApply(view) {
-  ON.tcp.seq = view.seq;
-  ON.tcp.round = view.round;
-  ON.tcp.last = view.last;
+  G().tcp.seq = view.seq;
+  G().tcp.round = view.round;
+  G().tcp.last = view.last;
 }
 
 async function onTcpDeal() {
-  const T = ON.tcp, b = T.bets;
+  const T = G().tcp, b = T.bets;
   if (ON.busy || T.round || phase !== 'betting') return;
   const stake = b.ante + b.pp + b.scb;
   // The server checks all of this again; these are just quicker messages.
@@ -4047,9 +4300,9 @@ async function onTcpDeal() {
 }
 
 async function onTcpAct(action) {
-  if (ON.busy || !ON.tcp.round || phase !== 'decision') return;
-  if (action === 'play' && bankroll() < ON.tcp.round.bets.ante) return;
-  await onTcpSend({ op: 'act', table: 'tcp', seq: ON.tcp.seq, action });
+  if (ON.busy || !G().tcp.round || phase !== 'decision') return;
+  if (action === 'play' && bankroll() < G().tcp.round.bets.ante) return;
+  await onTcpSend({ op: 'act', table: 'tcp', seq: G().tcp.seq, action });
 }
 
 /** Send one TCP deal/act, then draw what the server dealt and settled, as an offline hand is drawn. */
@@ -4059,7 +4312,7 @@ async function onTcpSend(body) {
   try { d = await onCall(body); }
   catch (e) {
     // The request may or may not have reached the server: ask what's true now.
-    try { const s2 = await onCall({ op: 'state' }); if (s2.ok) { ON.wallet = s2.wallet; onTcpApply(s2.tables.tcp); } } catch (e2) { /* still offline */ }
+    try { const s2 = await onCall({ op: 'state' }); if (s2.ok) { ON.wallet = s2.wallet; onTcpApply(onTables(s2).tcp); } } catch (e2) { /* still offline */ }
     d = { ok: false, message: 'Connection problem. The table shows what the server has; try again.' };
   }
   if (!ON) return;            // signed out meanwhile
@@ -4070,7 +4323,7 @@ async function onTcpSend(body) {
   econRenderHeader();
   if (S.game !== 'tcp' || !online()) { onSave(); renderBank(); return; }   // switched tab/mode mid-request
   if (!d.ok) { tcpRestore(d.message || 'The server refused that.'); return; }
-  const T = ON.tcp, events = d.events || [];
+  const T = G().tcp, events = d.events || [];
   if (body.op === 'deal') {
     const h = T.round || T.last;
     player = h.player;
@@ -4091,21 +4344,21 @@ async function onTcpSend(body) {
 /* ---------- roulette online ---------- */
 
 function onRlApply(wheel, view) {
-  ON.rl.seq[wheel] = view.seq;
-  if (wheel === ON.rl.wheel && view.recent) ON.rl.recent = view.recent.slice();
-  ON.rl.recentBy = ON.rl.recentBy || {};
-  ON.rl.recentBy[wheel] = view.recent || [];
+  G().rl.seq[wheel] = view.seq;
+  if (wheel === G().rl.wheel && view.recent) G().rl.recent = view.recent.slice();
+  G().rl.recentBy = G().rl.recentBy || {};
+  G().rl.recentBy[wheel] = view.recent || [];
 }
 
 /** One online spin: the server draws the pocket and pays (roulette-core.js); the page draws it. */
 async function onRlSpin() {
-  const st = ON.rl, w = rlW(), wheel = st.wheel;
+  const st = G().rl, w = rlW(), wheel = st.wheel;
   if (ON.busy || !rlCheck(st, w)) return;
   ON.busy = true;
   let d = null;
   try { d = await onCall({ op: 'deal', table: 'rl_' + wheel, seq: st.seq[wheel], bets: st.bets }); }
   catch (e) {
-    try { const s2 = await onCall({ op: 'state' }); if (s2.ok) { ON.wallet = s2.wallet; onRlApply(wheel, s2.tables['rl_' + wheel]); } } catch (e2) { /* still offline */ }
+    try { const s2 = await onCall({ op: 'state' }); if (s2.ok) { ON.wallet = s2.wallet; onRlApply(wheel, onTables(s2)['rl_' + wheel]); } } catch (e2) { /* still offline */ }
     d = { ok: false, message: 'Connection problem. Your chips are where the server says; try again.' };
   }
   if (!ON) return;
@@ -4118,7 +4371,7 @@ async function onRlSpin() {
   const res = d.view.last;
   rlRecord(st, w, res);
   onSave();
-  if (S.game !== 'roulette' || !online() || ON.rl.wheel !== wheel) { renderBank(); return; }
+  if (S.game !== 'roulette' || !online() || G().rl.wheel !== wheel) { renderBank(); return; }
   rlShow(w, res, econAnnounce(d.events || []));
 }
 
@@ -4156,9 +4409,9 @@ function jpPoll() {
   onCall({ op: 'pool' }).then(d => { if (d && d.ok) onJackpot(d); }).catch(() => {}).then(() => { jpPolling = false; });
 }
 
-/** Copy the server's slot table view (its seq and any running feature) into ON.slots. */
+/** Copy the server's slot table view (its seq and any running feature) into G().slots. */
 function onSlotApply(id, view) {
-  const st = ON.slots.m[id];
+  const st = G().slots.m[id];
   st.seq = view.seq;
   st.free = view.free || null;
   if (view.last && !st.last) st.last = { stops: view.last.stops, win: view.last.win, cost: view.last.cost };
@@ -4180,7 +4433,7 @@ async function onSlotSpin() {
   try { d = await onCall({ op: 'deal', table: 'slot_' + id, seq: st.seq, level: st.level }); }
   catch (e) {
     // The request may or may not have reached the server: ask what's true now.
-    try { const s2 = await onCall({ op: 'state' }); if (s2.ok) { ON.wallet = s2.wallet; onSlotApply(id, s2.tables['slot_' + id]); } } catch (e2) { /* still offline */ }
+    try { const s2 = await onCall({ op: 'state' }); if (s2.ok) { ON.wallet = s2.wallet; onSlotApply(id, onTables(s2)['slot_' + id]); } } catch (e2) { /* still offline */ }
     d = { ok: false, message: 'Connection problem. The machine shows what the server has; try again.' };
   }
   if (!ON) return;            // signed out meanwhile
@@ -4550,8 +4803,7 @@ function econRenderHeader() {
   $('xpText').textContent = `${lv.into} / ${lv.need} XP`;
   const live = ECON.activeEvents(now());
   $('eventBar').hidden = !live.length;
-  $('eventBar').innerHTML = live.map(e => `<strong>${e.name}</strong> is on: ${e.desc}`).join('<br>') +
-    (on ? '<br><span class="sub">Events apply to offline play for now; online play gets them soon.</span>' : '');
+  $('eventBar').innerHTML = live.map(e => `<strong>${e.name}</strong> is on: ${e.desc}`).join('<br>');
   if (typeof renderMode === 'function') renderMode();
 }
 
@@ -4619,15 +4871,16 @@ function econRenderRewards() {
   const rw = ECON.questReward(qs.tier, t);
   const midnight = ECON.nextDayStart(t);   // casino-clock midnight
   $('questList').innerHTML = qs.list.map((q, i) => {
-    const r = q.reward || rw;
+    const r = q.reward || ECON.questReward(qs.tier, t, q);
     const claimable = q.done && !q.claimed;
     return `<div class="quest${q.claimed ? ' done' : ''}"><div style="display:flex;gap:10px;align-items:center">` +
-      `<span style="flex:1">${q.claimed ? '&#10003; ' : ''}${ECON.questText(q)}</span>` +
+      `<span style="flex:1">${q.claimed ? '&#10003; ' : ''}${ECON.isHard(q) ? '<span class="qhard">CHALLENGE</span>' : ''}${ECON.questText(q)}</span>` +
       (claimable ? `<button class="btn-sm" data-claim="${i}" data-day="${qs.day}">Claim ${r.chips.toLocaleString()}</button>` : '') + '</div>' +
       `<div class="qbar"><div style="width:${(100 * q.progress / q.target).toFixed(0)}%"></div></div>` +
       `<div class="qmeta"><span>${q.claimed ? 'Claimed' : claimable ? 'Done: claim your reward' : `${q.progress} / ${q.target}`}</span>` +
       `<span>${r.chips.toLocaleString()} chips + ${r.xp} XP</span></div></div>`;
   }).join('') + `<div class="hint">${ECON.TIERS[qs.tier].name} quests. New set in ${fmtWait(midnight - t)}. ` +
+    `The daily challenge is much harder and pays ${ECON.CHALLENGE_MULT}x the chips and ${ECON.CHALLENGE_XP_MULT}x the XP. ` +
     'Unclaimed rewards are paid automatically when the day rolls over. Friends at the same rank get the same quests.</div>';
 
   // Events
@@ -4910,7 +5163,7 @@ $('rlWheels').onclick = (e) => {
   if (!t || animBusy() || (online() && ON.busy) || t.dataset.rlw === RLS().wheel) return;
   const st = RLS();
   st.wheel = t.dataset.rlw; st.bets = {}; st.lastBets = {}; rlUndoStack = []; rlLastRes = null;
-  if (online() && ON.rl.recentBy) st.recent = (ON.rl.recentBy[st.wheel] || []).slice();
+  if (online() && G().rl.recentBy) st.recent = (G().rl.recentBy[st.wheel] || []).slice();
   else if (!online()) st.recent = [];
   $('rlMsg').textContent = '';
   save(); if (online()) onSave(); rlRender();
@@ -4930,6 +5183,16 @@ $('rlDouble').onclick = () => {
   if (Math.max(...Object.values(doubled)) > econMaxBet() || rlTotal(doubled) > bankroll()) { $('rlMsg').textContent = 'Can\'t double: over your limit or your chips.'; return; }
   rlUndoStack.push(JSON.stringify(st.bets)); st.bets = doubled; rlDrawChips();
 };
+
+/* ---------- tournament wiring ---------- */
+$('game-tourney').onclick = (e) => {
+  const el = e.target && e.target.closest ? e.target.closest('[data-tnset],[data-tnclaim],[data-tnv]') : null;
+  if (!el) return;
+  if (el.dataset.tnset) { tnSet(el.dataset.tnset === '1'); tnRender(); }
+  else if (el.dataset.tnclaim) tnClaim(el.dataset.tnclaim);
+  else if (el.dataset.tnv) { TNB.view = el.dataset.tnv; tnRender(); }
+};
+$('tnBadge').onclick = () => tnSet(false);
 
 /* ---------- players wiring ---------- */
 $('lbTabs').onclick = (e) => {

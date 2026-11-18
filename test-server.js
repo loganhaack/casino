@@ -56,7 +56,7 @@ const seededInt = (seed) => { const r = mulberry32(seed); return (n) => Math.flo
 const SIGN = {
   opening: ['chips', 1], bet: ['chips', -1], payout: ['chips', 1],
   bonusWheel: ['chips', 1], rescueWheel: ['chips', 1], quests: ['chips', 1], promo: ['chips', 1],
-  shop: ['chips', -1], interest: ['vault', 1], vault: [null, 0],
+  shop: ['chips', -1], interest: ['vault', 1], vault: [null, 0], tournament: ['chips', 1],
 };
 const clone = (x) => JSON.parse(JSON.stringify(x));   // what jsonb does to it
 /**
@@ -126,13 +126,25 @@ function memStore(opts) {
       for (const r of mine) if (r.ref) byRef.set(r.ref, (byRef.get(r.ref) || 0) + r.amount);
       const hits = jp.hits.filter(h => h.user_id === u);
       out.push({ user_id: u, display_name: p.display_name, avatar: p.avatar,
-        econ: { xp: w.econ.xp, equipped: w.econ.equipped }, worth: w.chips + w.vault,
+        econ: { xp: w.econ.xp, equipped: w.econ.equipped, trophies: w.econ.trophies }, worth: w.chips + w.vault,
         week_net: mine.filter(r => r.at >= since).reduce((a, r) => a + r.amount, 0),
         best_win: Math.max(0, ...byRef.values()), jp_total: hits.reduce((a, h) => a + h.amount, 0), jp_count: hits.length,
         gross_won: [...byRef.values()].filter(v => v > 0).reduce((a, v) => a + v, 0),
         gross_lost: -[...byRef.values()].filter(v => v < 0).reduce((a, v) => a + v, 0),
         all_net: [...byRef.values()].reduce((a, v) => a + v, 0),
         joined: '2026-11-15T00:00:00Z' });
+    }
+    return out;
+  };
+  // tournament_standings(): every entered entry in one week's table, players with a profile only.
+  s.tourney = async (tableId) => {
+    if (!/^tn_\d{8}$/.test(tableId)) return [];
+    const out = [];
+    for (const [k, v] of tables) {
+      const [u, t] = k.split('/');
+      const p = profiles.get(u);
+      if (t !== tableId || !p || !v.entered) continue;
+      out.push({ user_id: u, display_name: p.display_name, avatar: p.avatar, chips: v.chips, rounds: v.rounds, paid: v.paid || null });
     }
     return out;
   };
@@ -717,7 +729,7 @@ async function main() {
     const seq = {};
     for (const id of SLOTS.MACHINE_IDS) seq[id] = 0;
     for (let i = 0; i < N; i++) {
-      const id = SLOTS.MACHINE_IDS[i % 3], t = 'slot_' + id, m = SLOTS.MACHINES[id];
+      const id = SLOTS.MACHINE_IDS[i % SLOTS.MACHINE_IDS.length], t = 'slot_' + id, m = SLOTS.MACHINES[id];
       const w = st.wallets.get('p');
       if (w.chips < 600) await st.commit('p', w.version, { chips: w.chips + 5000, vault: 0, econ: w.econ, ledger: [{ account: 'chips', amount: 5000, kind: 'quests' }] });
       const wasFree = (st.tables.get('p/' + t) || {}).free;
@@ -726,7 +738,7 @@ async function main() {
       if (!r.ok) { ok(false, 'spin refused: ' + r.message); break; }
       seq[id] = r.view.seq;
       const res = r.view.last;
-      if (wasFree) { freeSeen++; ok(res.cost === 0 && res.mult === m.free.mult, 'free spin charged or lost its multiplier'); }
+      if (wasFree) { freeSeen++; ok(res.cost === 0 && res.mult === (m.free.climb ? wasFree.mult : m.free.mult), 'free spin charged or lost its multiplier'); }
       else { paid++; ok(res.cost === SLOTS.totalBet(m, level), 'paid spin cost'); }
       ok(res.win === SLOTS.payOf(m, Int8Array.from(res.grid)) * (wasFree ? wasFree.level : level) * res.mult, 'server win == payOf x bet x mult');
       net += res.win - res.cost;
@@ -737,7 +749,7 @@ async function main() {
       if (fail - f > 20) break;
     }
     ok(freeSeen > 0, 'fuzz reached free spins');
-    report(`fuzz: ${N} spins (${freeSeen} free) over 3 machines: ledger identity every spin, free spins free, win == payOf`, f);
+    report(`fuzz: ${N} spins (${freeSeen} free) over ${SLOTS.MACHINE_IDS.length} machines: ledger identity every spin, free spins free, win == payOf`, f);
   }
   {
     // Same game as the page (SLOTS.play with the same RNG), and hard rule 2.
@@ -956,6 +968,187 @@ async function main() {
     ok(a.every((x, i) => x === direct[i]), 'server pockets == ROULETTE.spin driven directly');
     ok(a.every((x, i) => x === b[i]), 'Lv1 and Diamond got different pockets');
     report('same pockets as ROULETTE.spin (the page\'s path); Lv1 vs Diamond identical (hard rule 2)', f);
+  }
+
+  section('weekly tournaments');
+  {
+    const ECON = require('./economy.js'), TN = ECON.TOURNEY;
+    const WED = new Date('2026-11-18T17:00:00Z'), WEEK = ECON.tourneyWeek(WED), B = ECON.tourneyBounds(WEEK);
+    const at = (d) => ({ now: () => d });
+    // one blackjack round, standing on everything; returns the last response
+    async function bjRound(st, u, clockAt, bet, ri, table = 'bj') {
+      const e0 = (await PLAY.handle(st, u, { op: 'state' }, at(clockAt))).tourney;
+      let r = await PLAY.handle(st, u, { op: 'deal', table, seq: e0.tables[table].seq, bet, side: {}, tourney: WEEK }, { now: () => clockAt, randInt: ri });
+      while (r.ok && r.view.round) {
+        const a = r.view.legal.stand ? 'stand' : 'decline';
+        r = await PLAY.handle(st, u, { op: 'act', table, seq: r.view.seq, action: a, tourney: WEEK }, { now: () => clockAt, randInt: ri });
+      }
+      return r;
+    }
+    {
+      const f = fail, st = memStore({ jackpot: true }), ri = seededInt(91);
+      st.profiles.set('u', { display_name: 'Alex', avatar: 'fox' });
+      const s0 = await PLAY.handle(st, 'u', { op: 'state' }, at(WED));
+      ok(s0.tourney && s0.tourney.week === WEEK && s0.tourney.chips === TN.stack && !s0.tourney.entered, 'state shows an unentered entry at the full stack');
+      const w0 = clone(st.wallets.get('u')), rows0 = st.ledger.length;
+      const bad = async (b, code, label) => { const r = await PLAY.handle(st, 'u', Object.assign({ op: 'deal', seq: 0 }, b), { now: () => WED, randInt: ri }); ok(!r.ok && r.error === code, label + ': ' + r.error); };
+      await bad({ table: 'bj', bet: 10, tourney: 'next' }, 'bad_request', 'bad week');
+      await bad({ table: 'bj', bet: 10, tourney: ECON.tourneyWeek(new Date(B.end.getTime() + 3600e3)) }, 'tourney_closed', 'next week not started');
+      await bad({ table: 'bj', bet: 10, tourney: ECON.tourneyWeek(new Date(B.start.getTime() - 3600e3)) }, 'tourney_closed', 'last week over');
+      await bad({ table: 'bj', bet: TN.maxBet + 10, tourney: WEEK }, 'over_limit', 'over the tournament limit');
+      // a Bronze player (limit 500) may bet the tournament's 1,000
+      let r = await bjRound(st, 'u', WED, 1000, ri);
+      ok(r.ok && r.tourney.rounds === 1 && r.tourney.entered, 'Bronze plays at the tournament limit; one round counted');
+      ok(r.tourney.chips === TN.stack + r.view.last.net, 'stack moved by exactly the round net');
+      // every game, on the stack
+      let e = r.tourney;
+      r = await PLAY.handle(st, 'u', { op: 'deal', table: 'tcp', seq: e.tables.tcp.seq, bets: { ante: 50, pp: 10, scb: 0 }, tourney: WEEK }, { now: () => WED, randInt: ri });
+      if (r.ok && r.view.round) r = await PLAY.handle(st, 'u', { op: 'act', table: 'tcp', seq: r.view.seq, action: 'play', tourney: WEEK }, { now: () => WED, randInt: ri });
+      ok(r.ok && r.tourney.rounds === 2 && r.tourney.chips === e.chips + r.view.last.result.net, 'Three Card Poker on the stack');
+      e = r.tourney;
+      r = await PLAY.handle(st, 'u', { op: 'deal', table: 'rl_european', seq: 0, bets: { 'straight:17': 100 }, tourney: WEEK }, { now: () => WED, randInt: ri });
+      ok(r.ok && r.tourney.rounds === 3 && r.tourney.chips === e.chips + r.view.last.net, 'roulette on the stack');
+      e = r.tourney;
+      const pool0 = JSON.stringify(st.jp);
+      r = await PLAY.handle(st, 'u', { op: 'deal', table: 'slot_galleon', seq: 0, level: 5, tourney: WEEK }, { now: () => WED, randInt: ri });
+      ok(r.ok && r.tourney.chips === e.chips - r.view.last.cost + r.view.last.win, 'slots on the stack');
+      ok(JSON.stringify(st.jp) === pool0 && !('jackpot' in r) && r.view.last.jackpots.length === 0, 'tournament spins never touch the jackpot pool');
+      const w1 = st.wallets.get('u');
+      ok(w1.chips === w0.chips && w1.vault === w0.vault && (w1.econ.xp || 0) === (w0.econ.xp || 0), 'wallet chips, vault and XP untouched by tournament play');
+      ok(st.ledger.length === rows0, 'no ledger rows from tournament play');
+      ok((await PLAY.handle(st, 'u', { op: 'state' }, at(WED))).tables.bj.rounds === 0, 'the real blackjack table never moved');
+      const qs = w1.econ.quests.list;
+      ok(qs.every(q => q.progress === 0), 'no quest progress from tournament rounds');
+      // play out to the round limit
+      let guard = 0;
+      while (st.tables.get('u/' + ECON.tourneyTable(WEEK)).rounds < TN.rounds && guard++ < 400) {
+        const ent = st.tables.get('u/' + ECON.tourneyTable(WEEK));
+        const bet = Math.min(100, ent.chips - (ent.chips % 5));
+        if (bet < 5) break;
+        r = await bjRound(st, 'u', WED, Math.max(5, bet), ri);
+        if (!r.ok) { ok(false, 'refused mid-tournament: ' + r.message); break; }
+      }
+      const ent = st.tables.get('u/' + ECON.tourneyTable(WEEK));
+      ok(ent.rounds === TN.rounds, 'played exactly ' + TN.rounds + ' rounds (got ' + ent.rounds + ')');
+      r = await PLAY.handle(st, 'u', { op: 'deal', table: 'rl_european', seq: ent.tables.rl_european.seq, bets: { 'straight:17': 5 }, tourney: WEEK }, { now: () => WED, randInt: ri });
+      ok(!r.ok && r.error === 'tourney_done' && r.tourney && r.tourney.finished, 'no more rounds once all are played');
+      ok(st.wallets.get('u').chips === w0.chips, 'wallet still untouched');
+      report('validation, every game on the stack, tournament limit for everyone, no XP/quests/jackpots, wallet and ledger untouched, round limit', f);
+    }
+    {
+      // the week's end: no new rounds; an open round may finish within the grace; then closed
+      const f = fail, st = memStore(), ri = seededInt(5);
+      const late = new Date(B.end.getTime() - 1000), grace = new Date(B.end.getTime() + 60e3), closed = new Date(B.closes.getTime() + 1);
+      await PLAY.handle(st, 'u', { op: 'state' }, at(late));
+      let r = { ok: true, view: { round: null } }, seq = 0, tries = 0;
+      // find a deal that leaves a round open (no natural)
+      while (tries++ < 20) {
+        r = await PLAY.handle(st, 'u', { op: 'deal', table: 'bj', seq, bet: 10, side: {}, tourney: WEEK }, { now: () => late, randInt: ri });
+        seq = r.view.seq;
+        if (r.view.round) break;
+      }
+      ok(r.ok && r.view.round, 'a round is open at the buzzer');
+      const a = r.view.legal.stand ? 'stand' : 'decline';
+      const nx = ECON.tourneyWeek(grace);
+      ok((await PLAY.handle(st, 'u', { op: 'deal', table: 'rl_european', seq: 0, bets: { red: 5 }, tourney: WEEK }, { now: () => grace })).error === 'tourney_closed', 'no new rounds after the week ends');
+      let r2 = await PLAY.handle(st, 'u', { op: 'act', table: 'bj', seq, action: a, tourney: WEEK }, { now: () => grace, randInt: ri });
+      while (r2.ok && r2.view.round) r2 = await PLAY.handle(st, 'u', { op: 'act', table: 'bj', seq: r2.view.seq, action: r2.view.legal.stand ? 'stand' : 'decline', tourney: WEEK }, { now: () => grace, randInt: ri });
+      ok(r2.ok && !r2.view.round, 'the open round finishes in the grace period');
+      ok(nx !== WEEK && (await PLAY.handle(st, 'u', { op: 'state' }, at(grace))).tourney.week === nx, 'state moves on to the new week');
+      // a round left open past the close is stuck in last week, and can't be played
+      const st2 = memStore();
+      await PLAY.handle(st2, 'u', { op: 'state' }, at(late));
+      let r3, s3 = 0;
+      for (let i = 0; i < 20; i++) { r3 = await PLAY.handle(st2, 'u', { op: 'deal', table: 'bj', seq: s3, bet: 10, side: {}, tourney: WEEK }, { now: () => late, randInt: ri }); s3 = r3.view.seq; if (r3.view.round) break; }
+      const r4 = await PLAY.handle(st2, 'u', { op: 'act', table: 'bj', seq: s3, action: 'stand', tourney: WEEK }, { now: () => closed, randInt: ri });
+      ok(!r4.ok && r4.error === 'tourney_closed', 'closed: nothing more can be played');
+      report('week end: no new rounds; open rounds finish within the grace; closed after', f);
+    }
+    {
+      // standings and prizes
+      const f = fail, st = memStore();
+      const names = { a: 'Ann', b: 'Bo', c: 'Cy', d: 'Di', e: 'Ed' };
+      for (const [u, n] of Object.entries(names)) { st.profiles.set(u, { display_name: n, avatar: 'fox' }); await PLAY.handle(st, u, { op: 'state' }, at(WED)); }
+      // finished entries with set stacks (as if played): b ties c for 2nd, d unfinished with the biggest stack
+      const entry = (chips, rounds) => ({ week: WEEK, chips, rounds, entered: WED.getTime(), paid: null, tables: {} });
+      const set = (u, e2) => st.tables.set(u + '/' + ECON.tourneyTable(WEEK), e2);
+      set('a', entry(25000, TN.rounds)); set('b', entry(14000, TN.rounds)); set('c', entry(14000, TN.rounds));
+      set('d', entry(90000, 60)); set('e', entry(0, TN.rounds));
+      let b = await PLAY.handle(st, 'a', { op: 'tourney' }, at(WED));
+      const P = Object.fromEntries(b.tourney.current.players.map(p => [p.name, p]));
+      ok(P.Ann.place === 1 && P.Bo.place === 2 && P.Cy.place === 2 && P.Ed.place === 4 && P.Di.place === null, 'places: 1, 2, 2 (tie), 4; unfinished unplaced');
+      ok(P.Ann.prize === TN.prizes[0] && P.Bo.prize === TN.prizes[1] && P.Cy.prize === TN.prizes[1] && P.Ed.prize === TN.placePrize && P.Di.prize === 0, 'prizes by place');
+      ok(P.Ann.mine && !P.Bo.mine && !b.tourney.current.final && b.tourney.current.finishers === 4, 'mine flag; not final mid-week; 4 finishers');
+      ok(!/"user_id"|"a"\s*:|"[abcde]"/.test(JSON.stringify(b.tourney.current.players)), 'no user ids in the standings');
+      ok((await PLAY.handle(st, 'a', { op: 'tnClaim', week: WEEK }, at(WED))).error === 'not_final', 'no claim before the week closes');
+      const after = new Date(B.closes.getTime() + 3600e3);
+      const before = Object.fromEntries(Object.keys(names).map(u => [u, st.wallets.get(u).chips]));
+      for (const u of ['a', 'b', 'c', 'e']) {
+        const r = await PLAY.handle(st, u, { op: 'tnClaim', week: WEEK }, at(after));
+        const want = { a: TN.prizes[0], b: TN.prizes[1], c: TN.prizes[1], e: TN.placePrize }[u];
+        ok(r.ok && r.prize.prize === want && st.wallets.get(u).chips === before[u] + want, `${names[u]} paid ${want}`);
+        const row = st.ledger[st.ledger.length - 1];
+        ok(row.kind === 'tournament' && row.amount === want && row.user === u, 'paid through a tournament ledger row');
+        ok(st.wallets.get(u).chips === st.ledgerSum(u), 'chips == ledger');
+      }
+      ok((await PLAY.handle(st, 'a', { op: 'tnClaim', week: WEEK }, at(after))).error === 'nothing_to_claim', 'paid once');
+      ok((await PLAY.handle(st, 'd', { op: 'tnClaim', week: WEEK }, at(after))).error === 'nothing_to_claim', 'unfinished: nothing');
+      ok(st.wallets.get('d').chips === before.d, 'unfinished entry paid nothing');
+      const tro = (u) => st.wallets.get(u).econ.trophies;
+      ok(tro('a').length === 1 && tro('a')[0].place === 1 && tro('b')[0].place === 2 && tro('e').length === 0, 'trophies for the top three places only');
+      const lb = await PLAY.handle(st, 'a', { op: 'leaderboard' });
+      const L = Object.fromEntries(lb.board.players.map(p => [p.name, p]));
+      ok(JSON.stringify(L.Ann.trophies) === '[1,0,0]' && JSON.stringify(L.Cy.trophies) === '[0,1,0]', 'trophies on the profile cards');
+      b = await PLAY.handle(st, 'a', { op: 'tourney' }, at(after));
+      ok(b.tourney.last && b.tourney.last.week === WEEK && b.tourney.last.final && b.tourney.last.players.find(p => p.name === 'Ann').paid, 'last week final, paid shown');
+      ok((await PLAY.handle({ wallet: async () => null }, 'x', { op: 'tourney' }, at(WED))).tourney === null, 'no standings function: tourney is null');
+      report('standings: ties share a place, unfinished unplaced; prizes once, after the close, through the ledger; trophies', f);
+    }
+    {
+      // hard rule 2, tournament edition: Lv1 and Diamond, same seed, same decisions -> same entry
+      const f = fail;
+      async function run(xp) {
+        const st = memStore();
+        await PLAY.handle(st, 'u', { op: 'state' }, at(WED));
+        const w = st.wallets.get('u');
+        await st.commit('u', w.version, { chips: w.chips, vault: 0, econ: Object.assign(w.econ, { xp }), ledger: [] });
+        const ri = seededInt(77), out = [];
+        for (let i = 0; i < 60; i++) { const r = await bjRound(st, 'u', WED, 50, ri); out.push(JSON.stringify([r.view.last.dealer, r.view.last.net, r.tourney.chips])); }
+        return out;
+      }
+      const a = await run(0), b = await run(500000);
+      ok(a.every((x, i) => x === b[i]), 'Lv1 and Diamond got different tournament rounds');
+      report('tournament: Lv1 vs Diamond identical (same limit, same deal)', f);
+    }
+  }
+
+  section('daily challenge quest');
+  {
+    const f = fail, st = memStore(), ECON = require('./economy.js');
+    const WED = new Date('2026-11-18T17:00:00Z');
+    await PLAY.handle(st, 'u', { op: 'state' }, { now: () => WED });
+    let e = st.wallets.get('u').econ;
+    const hard = e.quests.list.filter(q => ECON.isHard(q));
+    ok(e.quests.list.length === 4 && hard.length === 1, 'four quests a day, one of them the challenge');
+    // an account dealt three quests today (before the challenge existed) gets today's challenge
+    const w = st.wallets.get('u');
+    e.quests.list = e.quests.list.filter(q => !ECON.isHard(q));
+    await st.commit('u', w.version, { chips: w.chips, vault: 0, econ: e, ledger: [] });
+    await PLAY.handle(st, 'u', { op: 'state' }, { now: () => WED });
+    const back = st.wallets.get('u').econ.quests.list;
+    ok(back.length === 4 && back.filter(q => ECON.isHard(q)).length === 1 && back[3].id === hard[0].id, "today's challenge added to a list dealt without it");
+    // complete it and claim: 5x a normal quest
+    const w2 = st.wallets.get('u');
+    e = w2.econ;
+    if (!e.quests.list.some(q => ECON.isHard(q))) e.quests.list.push(ECON.dailyChallenge(e.quests.day, e.quests.tier));
+    const i = e.quests.list.findIndex(q => ECON.isHard(q));
+    Object.assign(e.quests.list[i], { progress: e.quests.list[i].target, done: true, claimed: false, reward: ECON.questReward(0, WED, e.quests.list[i]) });
+    await st.commit('u', w2.version, { chips: w2.chips, vault: 0, econ: e, ledger: [] });
+    const c0 = st.wallets.get('u').chips;
+    const r = await PLAY.handle(st, 'u', { op: 'claim', i, day: e.quests.day }, { now: () => WED });
+    ok(r.ok && r.reward.chips === ECON.QUEST_CHIPS * ECON.CHALLENGE_MULT && st.wallets.get('u').chips === c0 + r.reward.chips, 'challenge pays 5x a normal quest (' + (r.reward && r.reward.chips) + ')');
+    ok(r.reward.xp === ECON.QUEST_XP * ECON.CHALLENGE_XP_MULT, 'and 3x the XP');
+    report('daily challenge: one a day, backfilled into today\'s list, pays 5x chips / 3x XP', f);
   }
 
   section('leaderboard');

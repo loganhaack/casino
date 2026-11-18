@@ -62,7 +62,8 @@
   const SIDE_KEYS = Object.keys(BJ.SIDE_BETS);
   const ACTIONS = ['insure', 'decline', 'hit', 'stand', 'double', 'split'];
   const TCP_ACTIONS = ['play', 'fold'];
-  const OPS = ['state', 'pool', 'leaderboard', 'deal', 'act', 'claim', 'claimAll', 'spin', 'rescue', 'vault', 'buy', 'equip'];
+  const OPS = ['state', 'pool', 'leaderboard', 'tourney', 'deal', 'act', 'claim', 'claimAll', 'spin', 'rescue', 'vault', 'buy', 'equip', 'tnClaim'];
+  const TN = ECON.TOURNEY;
   const MAX_RETRIES = 8;   // the jackpot pool is shared, so conflicts are likelier than with one wallet
   const RECENT_HITS = 12;
 
@@ -82,6 +83,24 @@
   }
 
   const emptyTable = () => ({ shoe: null, round: null, last: null, n: 0, seq: 0 });
+
+  /** The bet limit for this bankroll: the tournament's (same for everyone) or your rank's. */
+  const limitOf = (a) => (a.tourney ? TN.maxBet : rankOf(a.econ).maxBet);
+  function overLimit(a, limit, per) {
+    refuse('over_limit', a.tourney
+      ? `The tournament limit is ${limit.toLocaleString('en-US')} ${per}.`
+      : `Your table limit is ${limit.toLocaleString('en-US')} ${per}. Rank up to raise it.`);
+  }
+
+  /**
+   * After a game has settled, on facts only. A real round: XP, quests,
+   * promos. A tournament round: it counts toward the entry's rounds, and
+   * nothing else (tournament chips earn no XP or quest progress).
+   */
+  function after(turn, facts) {
+    if (turn.tn) { if (facts.wagered > 0) turn.tn.rounds++; return; }
+    turn.ev.push(...ECON.afterRound(turn.acct, facts, turn.now));
+  }
 
   function fmtWait(ms) {
     const m = Math.max(1, Math.ceil(ms / 60000));
@@ -152,7 +171,7 @@
     turn.ts.round = null;
     turn.ts.n++;
     // After settlement, on facts only: XP, quests, promos. Can't touch the round.
-    turn.ev.push(...ECON.afterRound(a, ECON.bjFacts(r, t, TABLE_RULES.bjMinBet), turn.now));
+    after(turn, ECON.bjFacts(r, t, TABLE_RULES.bjMinBet));
   }
 
   function deal(turn, t, req, randInt) {
@@ -173,10 +192,8 @@
     }
     if (!Number.isInteger(bet) || bet < TABLE_RULES.bjMinBet) refuse('bad_bet', `Minimum bet is ${TABLE_RULES.bjMinBet}.`);
     if (bet % rules.betUnit !== 0) refuse('bad_bet', `Bets must be a multiple of ${rules.betUnit}.`);
-    const limit = rankOf(a.econ).maxBet;
-    if (Math.max(bet, ...Object.values(side)) > limit) {
-      refuse('over_limit', `Your table limit is ${limit.toLocaleString('en-US')} per bet. Rank up to raise it.`);
-    }
+    const limit = limitOf(a);
+    if (Math.max(bet, ...Object.values(side)) > limit) overLimit(a, limit, 'per bet');
     const total = bet + Object.values(side).reduce((x, y) => x + y, 0);
     if (a.chips < total) refuse('not_enough_chips', 'Not enough chips for the main bet plus side bets.');
 
@@ -222,10 +239,8 @@
     const bets = { ante: b.ante || 0, pp: b.pp || 0, scb: b.scb || 0 };
     const err = TCP.betError(bets, rules);
     if (err) refuse('bad_bet', err);
-    const limit = rankOf(a.econ).maxBet;
-    if (Math.max(bets.ante, bets.pp, bets.scb) > limit) {
-      refuse('over_limit', `Your table limit is ${limit.toLocaleString('en-US')} per bet. Rank up to raise it.`);
-    }
+    const limit = limitOf(a);
+    if (Math.max(bets.ante, bets.pp, bets.scb) > limit) overLimit(a, limit, 'per bet');
     const stake = bets.ante + bets.pp + bets.scb;
     if (a.chips < stake) refuse('not_enough_chips', 'Not enough chips.');
 
@@ -267,7 +282,7 @@
     ts.round = null;
     ts.n++;
     // After settlement, on facts only: XP, quests, promos. Can't touch the hand.
-    turn.ev.push(...ECON.afterRound(a, TCP.facts(res, r.bets, TABLE_RULES.tcp.minBet), turn.now));
+    after(turn, TCP.facts(res, r.bets, TABLE_RULES.tcp.minBet));
   }
 
   /* ------------------------------------------------------------- slots -- */
@@ -281,8 +296,8 @@
     if (!free) {
       const err = SLOTS.betError(m, level);
       if (err) refuse('bad_bet', err);
-      const cost = SLOTS.totalBet(m, level), limit = rankOf(a.econ).maxBet;
-      if (cost > limit) refuse('over_limit', `Your table limit is ${limit.toLocaleString('en-US')} per spin. Rank up to raise it.`);
+      const cost = SLOTS.totalBet(m, level), limit = limitOf(a);
+      if (cost > limit) overLimit(a, limit, 'per spin');
       if (a.chips < cost) refuse('not_enough_chips', 'Not enough chips for this bet.');
     }
     turn.ref = `${t}:${ts.n + 1}`;
@@ -316,7 +331,7 @@
     ts.last = res;
     ts.n++;
     // Paid spins only, after the result: XP, quests. Can't touch the spin.
-    if (res.cost) turn.ev.push(...ECON.afterRound(a, SLOTS.facts(res, m), turn.now));
+    if (res.cost) after(turn, SLOTS.facts(res, m));
   }
 
   /* ---------------------------------------------------------- roulette -- */
@@ -329,8 +344,8 @@
     if (err) refuse(/^That isn't|^Bad bets/.test(err) ? 'bad_request' : 'bad_bet', err);
     const bets = {};
     for (const [id, amt] of Object.entries(req.bets)) if (amt > 0) bets[id] = amt;
-    const limit = rankOf(a.econ).maxBet;
-    if (Math.max(...Object.values(bets)) > limit) refuse('over_limit', `Your table limit is ${limit.toLocaleString('en-US')} per bet. Rank up to raise it.`);
+    const limit = limitOf(a);
+    if (Math.max(...Object.values(bets)) > limit) overLimit(a, limit, 'per bet');
     const total = Object.values(bets).reduce((x, y) => x + y, 0);
     if (a.chips < total) refuse('not_enough_chips', 'Not enough chips for those bets.');
     turn.ref = `${t}:${ts.n + 1}`;
@@ -344,7 +359,74 @@
     ts.last = res;
     ts.recent = [res.pocket, ...(ts.recent || [])].slice(0, 20);
     ts.n++;
-    turn.ev.push(...ECON.afterRound(a, ROULETTE.facts(res), turn.now));
+    after(turn, ROULETTE.facts(res));
+  }
+
+  /* -------------------------------------------------------- tournaments -- */
+
+  // A player's entry for one week lives in ONE table state, 'tn_<week>':
+  // { week, chips, rounds, entered, paid, tables: { <table id>: table state } }.
+  // Tournament chips are not real chips: they never touch the wallet or the
+  // ledger. The games are the same functions, run on a bankroll that is the
+  // entry's stack, with the tournament's limit and no XP / quests / jackpots.
+
+  const isWeek = (w) => typeof w === 'string' && /^\d{8}$/.test(w);
+  const blankEntry = (week) => ({ week, chips: TN.stack, rounds: 0, entered: 0, paid: null, tables: {} });
+  async function loadEntry(store, userId, week) {
+    return (await store.table(userId, ECON.tourneyTable(week))) || blankEntry(week);
+  }
+  /** A round or a free-spins feature still to finish at this table. */
+  const openAt = (ts) => !!(ts && (ts.round || ts.free));
+  const entryOpen = (tn) => Object.values(tn.tables).some(openAt);
+
+  /** The entry a tournament request plays on, or a refusal if it can't be played now. */
+  async function tourneyEntry(store, userId, req, now, t) {
+    const week = req.tourney;
+    if (!isWeek(week)) refuse('bad_request', 'Bad tournament week.');
+    const cur = ECON.tourneyWeek(now);
+    const tn = await loadEntry(store, userId, week);
+    if (week !== cur) {
+      // Last week's: only to finish a round that was open when it ended.
+      if (!(week < cur && openAt(tn.tables[t]) && now < ECON.tourneyBounds(week).closes)) {
+        refuse('tourney_closed', week > cur ? 'That tournament hasn\'t started yet.' : 'That week\'s tournament is over. The standings have your result.');
+      }
+    } else if (tn.rounds >= TN.rounds && !openAt(tn.tables[t])) {
+      refuse('tourney_done', `You've played all ${TN.rounds} rounds. Final stack: ${tn.chips.toLocaleString('en-US')}.`);
+    }
+    if (!tn.entered) tn.entered = now.getTime();
+    return tn;
+  }
+
+  /** An entry as its player sees it: the stack, the rounds, and each table (no shoe, no hole card). */
+  function entryView(tn) {
+    const tables = {};
+    for (const k of TABLE_IDS) tables[k] = tableView(tn.tables[k] || emptyTable(), tn.chips, k);
+    const b = ECON.tourneyBounds(tn.week);
+    return { week: tn.week, chips: tn.chips, rounds: tn.rounds, of: TN.rounds, entered: !!tn.entered,
+             finished: tn.rounds >= TN.rounds && !entryOpen(tn), open: entryOpen(tn), paid: tn.paid || null,
+             ends: b.end.toISOString(), closes: b.closes.toISOString(), stack: TN.stack, maxBet: TN.maxBet, tables };
+  }
+
+  /** One week's standings from every entry (the SQL function), or null without the migration. */
+  async function standings(store, userId, week, now) {
+    const rows = store.tourney ? await store.tourney(ECON.tourneyTable(week)) : null;
+    if (!rows) return null;
+    const b = ECON.tourneyBounds(week), final = now >= b.closes;
+    const st = ECON.tourneyStandings(rows.map(r => ({
+      name: r.display_name, avatar: r.avatar, chips: +r.chips, rounds: +r.rounds, mine: r.user_id === userId, paid: !!r.paid })));
+    const of = st.filter(e => e.place).length;
+    return { week, ends: b.end.toISOString(), closes: b.closes.toISOString(), final, finishers: of,
+             players: st.map(e => Object.assign(e, { prize: ECON.tourneyPrize(e.place) })) };
+  }
+
+  /** This week's and last week's standings, plus the caller's entry. */
+  async function tourneyOut(store, userId, now) {
+    const cur = ECON.tourneyWeek(now);
+    const prev = ECON.tourneyWeek(new Date(ECON.tourneyBounds(cur).start.getTime() - 86400000));
+    const current = await standings(store, userId, cur, now);
+    if (!current) return { tourney: null };
+    return { tourney: { config: TN, current, last: await standings(store, userId, prev, now),
+                        entry: entryView(await loadEntry(store, userId, cur)) } };
   }
 
   /* ------------------------------------------------------------ economy -- */
@@ -409,6 +491,27 @@
       case 'equip':
         if (typeof req.id !== 'string' || !ECON.equip(a, req.id)) refuse('cant_equip', 'You don\'t own that.');
         return;
+      case 'tnClaim': {
+        // A finished week's prize, once. The standings are final once the
+        // week has closed: no entry can change after that.
+        const week = req.week;
+        if (!isWeek(week)) refuse('bad_request', 'Bad tournament week.');
+        if (t < ECON.tourneyBounds(week).closes) refuse('not_final', 'Prizes are paid once that week\'s tournament has closed.');
+        const tn = await store.table(userId, ECON.tourneyTable(week));
+        if (!tn) refuse('nothing_to_claim', 'You didn\'t play in that tournament.');
+        if (tn.paid) refuse('nothing_to_claim', 'Already paid.');
+        const st = await standings(store, userId, week, t);
+        if (!st) refuse('unavailable', 'Tournaments aren\'t set up on the server yet.');
+        const me = st.players.find(e => e.mine);
+        const prize = me ? me.prize : 0;
+        if (!prize) refuse('nothing_to_claim', `You played ${tn.rounds} of ${TN.rounds} rounds, so you didn't place.`);
+        ECON.grant(a, 'tournament', prize);
+        if (me.place <= TN.prizes.length) a.econ.trophies.push({ week, place: me.place, of: st.finishers });
+        tn.paid = { place: me.place, prize, of: st.finishers };
+        turn.save = { id: ECON.tourneyTable(week), state: tn };
+        turn.extra.prize = { week, place: me.place, prize, of: st.finishers };
+        return;
+      }
     }
   }
 
@@ -430,6 +533,9 @@
    *   { op: 'spin', wheel: 'bonus'|'rescue' }   ({ op: 'rescue' } = spin rescue)
    *   { op: 'vault', amount }        (+ deposit, - withdraw)
    *   { op: 'buy', id }              { op: 'equip', id }
+   *   { op: 'tourney' }              (standings: this week, last week, your entry)
+   *   any deal/act + tourney: '<YYYYMMDD week>'   (plays your tournament entry, not your wallet)
+   *   { op: 'tnClaim', week }        (a closed week's prize)
    *
    * Every response carries `events`: what the economy did (quest done, level
    * up, promo, interest...), for the page to announce.
@@ -451,6 +557,8 @@
     // Jackpot meters only: no wallet, no write.
     if (req.op === 'pool') return Object.assign({ ok: true }, await poolOut(store, null, userId));
     if (req.op === 'leaderboard') return Object.assign({ ok: true }, await boardOut(store, userId, clock()));
+    if (req.op === 'tourney') return Object.assign({ ok: true }, await tourneyOut(store, userId, clock()));
+    const tourney = game && req.tourney !== undefined;
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       let w = await store.wallet(userId);
@@ -459,7 +567,7 @@
       const econ = ECON.normalizeEcon(clone(w.econ || {}), TABLE_RULES.startingChips);
       econ.vault.balance = w.vault;   // the column is the truth; econ carries the vault's day tracking
       const acct = { chips: w.chips, econ, rows: [] };
-      const turn = { acct, now, ev: [], extra: {}, ts: null, ref: null, shuffled: false, pool: null, poolChanged: false, hits: [] };
+      const turn = { acct, now, ev: [], extra: {}, ts: null, ref: null, shuffled: false, pool: null, poolChanged: false, hits: [], tn: null, save: null };
       const econBefore = JSON.stringify(econ);
 
       // Every request keeps the day current: yesterday's unclaimed quests are
@@ -469,15 +577,20 @@
 
       const t = game ? req.table : null;
       try {
+        if (tourney) {
+          // Same games, on the entry's stack (see TOURNAMENTS).
+          turn.tn = await tourneyEntry(store, userId, req, now, t);
+          turn.acct = { chips: turn.tn.chips, econ, rows: [], tourney: true };
+          turn.ts = turn.tn.tables[t] || emptyTable();
+        } else if (game) turn.ts = (await store.table(userId, t)) || emptyTable();
         if (game) {
-          turn.ts = (await store.table(userId, t)) || emptyTable();
           if (req.seq !== turn.ts.seq) refuse('stale', 'The table changed (another tab or a double click). Showing the current state.');
           if (isRoulette(t)) {
             if (req.op !== 'deal') refuse('bad_request', 'Roulette only spins.');
             rlDeal(turn, t, req, randInt);
           } else if (isSlot(t)) {
             if (req.op !== 'deal') refuse('bad_request', 'Slot machines only spin.');
-            if (store.pool) {
+            if (store.pool && !tourney) {             // tournament spins don't play for jackpots
               turn.pool = await store.pool();             // null: no jackpot table yet
               if (turn.pool && !turn.pool.state) turn.pool.state = await JACKPOT.blankPool(jpRandInt);
             }
@@ -488,6 +601,14 @@
           } else if (req.op === 'deal') deal(turn, t, req, randInt);
           else act(turn, t, req, randInt);
           turn.ts.seq++;
+          if (tourney) {
+            const tn = turn.tn, moved = turn.acct.rows.reduce((x, r) => x + r.amount, 0);
+            if (turn.acct.chips - tn.chips !== moved) throw new Error('tournament: stack moved without matching rows');
+            tn.chips = turn.acct.chips;
+            tn.tables[t] = turn.ts;
+            turn.save = { id: ECON.tourneyTable(tn.week), state: tn };
+            turn.acct = acct;   // the real wallet: untouched by the tournament
+          }
         } else if (req.op !== 'state') {
           await economyOp(turn, store, userId, req, randInt);
         }
@@ -497,16 +618,22 @@
         const cur = { chips: w.chips, econ: ECON.normalizeEcon(clone(w.econ || {}), TABLE_RULES.startingChips) };
         cur.econ.vault.balance = w.vault;
         const out = { ok: false, error: e.code, message: e.message, wallet: walletView(cur) };
-        if (game) { out.table = t; out.view = tableView((await store.table(userId, t)) || emptyTable(), w.chips, t); }
+        if (tourney) {
+          const tn = isWeek(req.tourney) ? await loadEntry(store, userId, req.tourney) : null;
+          out.table = t;
+          out.view = tableView((tn && tn.tables[t]) || emptyTable(), tn ? tn.chips : 0, t);
+          if (tn) out.tourney = entryView(tn);
+        } else if (game) { out.table = t; out.view = tableView((await store.table(userId, t)) || emptyTable(), w.chips, t); }
         return out;
       }
 
-      const changed = game || acct.rows.length > 0 || JSON.stringify(econ) !== econBefore;
+      const changed = game || turn.save || acct.rows.length > 0 || JSON.stringify(econ) !== econBefore;
+      const save = turn.save || (game ? { id: t, state: turn.ts } : null);
       if (changed) {
         try {
           await store.commit(userId, w.version, {
             chips: acct.chips, vault: econ.vault.balance, econ, ledger: acct.rows,
-            tableId: t, tableState: game ? turn.ts : undefined,
+            tableId: save ? save.id : null, tableState: save ? save.state : undefined,
             pool: turn.poolChanged ? { version: turn.pool.version, state: turn.pool.state } : undefined,
             hits: turn.hits,
           });
@@ -517,12 +644,14 @@
       }
 
       const out = Object.assign({ ok: true, wallet: walletView(acct), events: turn.ev }, turn.extra);
-      if (req.op === 'state' || (game && isSlot(t))) Object.assign(out, await poolOut(store, turn.poolChanged ? turn.pool.state : null, userId));
+      if (req.op === 'state' || (game && isSlot(t) && !tourney)) Object.assign(out, await poolOut(store, turn.poolChanged ? turn.pool.state : null, userId));
       if (req.op === 'state') {
         out.tables = {};
         for (const k of TABLE_IDS) out.tables[k] = tableView((await store.table(userId, k)) || emptyTable(), acct.chips, k);
+        out.tourney = entryView(await loadEntry(store, userId, ECON.tourneyWeek(now)));
       }
-      if (game) { out.table = t; out.view = tableView(turn.ts, acct.chips, t); out.shuffled = turn.shuffled; }
+      if (game) { out.table = t; out.view = tableView(turn.ts, tourney ? turn.tn.chips : acct.chips, t); out.shuffled = turn.shuffled; }
+      if (tourney) out.tourney = entryView(turn.tn);
       return out;
     }
     return fail('busy', 'The server was busy with another request. Try again.');
@@ -548,6 +677,7 @@
       return {
         name: r.display_name, avatar: r.avatar, level: lv.level, xp: e.xp || 0, tier: ECON.TIERS[tier].name,
         title: ECON.SHOP_BY_ID[eq.title].text, equipped: eq,
+        trophies: [1, 2, 3].map(p => (Array.isArray(e.trophies) ? e.trophies : []).filter(x => x && x.place === p).length),
         worth: +r.worth, weekNet: +r.week_net, bestWin: +r.best_win, jpTotal: +r.jp_total, jpCount: +r.jp_count,
         // v2 migration; 0 until it's applied
         gains: +(r.gross_won || 0), losses: +(r.gross_lost || 0), allNet: +(r.all_net || 0),

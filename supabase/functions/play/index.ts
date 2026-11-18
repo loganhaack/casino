@@ -116,6 +116,15 @@ const store = {
       throw e;
     }
   },
+  // Every entry in one week's tournament (tournaments migration), or null if it isn't applied yet.
+  async tourney(tableId: string) {
+    try {
+      return await rpc('tournament_standings', { p_table: tableId });
+    } catch (e) {
+      if (e instanceof DbError && (e.code === 'PGRST202' || e.code === '42883')) return null;
+      throw e;
+    }
+  },
   async recentHits(n: number) {
     try {
       const rows = await db(`jackpot_hits?select=at,tier,user_id,display_name,table_id,amount,reveal&order=id.desc&limit=${n}`);

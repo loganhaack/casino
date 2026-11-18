@@ -21,8 +21,12 @@
  *            a wild that multiplies.
  *   lines    5x3 video slot, fixed paylines, left-to-right line pays, wild,
  *            scatter pays (x total bet) and a free-spins feature.
- *   ways     5x3 video slot, 243 ways: a symbol on adjacent reels from the
- *            left pays (pay x number of ways), wild, scatter, free spins.
+ *   ways     video slot paying any way: 5x3 (243 ways) or 6x4 (4,096 ways).
+ *            A symbol on adjacent reels from the left pays (pay x number of
+ *            ways), wild, scatter, free spins. Options: an EXPANDING wild
+ *            (one in the window turns its whole reel wild) and a CLIMBING
+ *            free-spin multiplier (+climb after every winning free spin,
+ *            up to maxMult), with free spins by scatter count (free.awards).
  *
  * Every pay is a whole number of chips: line pays are multiples of the line
  * bet, ways and scatter pays multiples of the bet unit / total bet, and
@@ -176,7 +180,53 @@
     par: null,
   };
 
-  const MACHINES = { gilded, galleon, lantern };
+  /* --------------------------------------------- Obsidian Forge ----- */
+  // High volatility. 6 reels x 4 rows, 4,096 ways. Symbols are stacked (they
+  // land in pairs), so most spins miss and the hits come in bunches. The
+  // Forge Hammer is wild on reels 2 to 5 and EXPANDS: one anywhere in the
+  // window turns its whole reel wild. Volcanoes (reels 2 to 5 only) start
+  // free spins that begin at x2 and climb +1 after every winning free spin.
+  const OF_SYMS = [
+    { id: 'nine',    name: '9' },
+    { id: 'ten',     name: '10' },
+    { id: 'jack',    name: 'J' },
+    { id: 'queen',   name: 'Q' },
+    { id: 'king',    name: 'K' },
+    { id: 'ace',     name: 'A' },
+    { id: 'axe',     name: 'Battle Axe' },
+    { id: 'helm',    name: 'Horned Helm' },
+    { id: 'shield',  name: 'Rune Shield' },
+    { id: 'golem',   name: 'Lava Golem' },
+    { id: 'hammer',  name: 'Forge Hammer (wild)' },
+    { id: 'volcano', name: 'Volcano (scatter)' },
+  ];
+  const forge = {
+    id: 'forge', name: 'Obsidian Forge', kind: 'ways',
+    tagline: '6 reels, 4,096 ways. Hammers expand to fill their reel. Free spins start at x2 and climb.',
+    symbols: OF_SYMS,
+    reels: [
+      { stops: strip('ten ten nine nine axe axe ace ace jack jack queen queen king king ten ten golem golem nine nine shield shield helm helm queen queen king king ace ace axe axe nine nine ten ten jack jack', OF_SYMS) },
+      { stops: strip('ten ten queen queen ace ace nine nine king king axe axe jack jack hammer volcano helm helm golem golem ten ten nine nine king king queen queen shield shield ace ace axe axe jack jack', OF_SYMS) },
+      { stops: strip('axe axe ace ace ten ten queen queen shield shield nine nine jack jack king king king king nine nine ace ace queen queen jack jack volcano hammer helm helm axe axe golem golem ten ten', OF_SYMS) },
+      { stops: strip('nine nine king king ten ten jack jack ace ace axe axe queen queen helm helm golem golem volcano jack jack shield shield ace ace queen queen ten ten hammer nine nine king king axe axe', OF_SYMS) },
+      { stops: strip('king king ace ace volcano jack jack queen queen helm helm ten ten axe axe nine nine hammer shield shield ten ten ace ace axe axe golem golem jack jack queen queen king king nine nine', OF_SYMS) },
+      { stops: strip('nine nine king king queen queen ten ten ace ace jack jack axe axe golem golem nine nine ten ten helm helm shield shield ten ten queen queen nine nine ace ace axe axe jack jack king king', OF_SYMS) },
+    ],
+    rows: 4,
+    // Pays x bet unit, per way, for 3, 4, 5, 6 reels. Total bet = 50 units.
+    pays: {
+      nine: [1, 2, 4, 10], ten: [1, 2, 4, 10], jack: [1, 2, 5, 12], queen: [1, 2, 5, 12],
+      king: [1, 3, 6, 15], ace: [1, 3, 6, 15],
+      axe: [2, 5, 12, 30], helm: [3, 6, 15, 50], shield: [5, 12, 30, 100], golem: [10, 25, 75, 300],
+    },
+    wild: 'hammer', expanding: true, scatter: 'volcano',
+    scatterPays: [0, 0, 0, 2, 5],        // x TOTAL bet (4 is the most that can land)
+    free: { trigger: 3, spins: 13, awards: [0, 0, 0, 13, 22], mult: 2, climb: 1, maxMult: 20 },
+    bet: { units: 50, minUnit: 1 },
+    par: null,
+  };
+
+  const MACHINES = { gilded, galleon, lantern, forge };
   const MACHINE_IDS = Object.keys(MACHINES);
 
   /* ===================================== exact PAR figures (verified) ===== */
@@ -191,6 +241,7 @@
     gilded:  { rtp: 0.93035889, hit: 0.29113388, feature: 0,          sd: 4.282082 },
     galleon: { rtp: 0.94959177, hit: 0.44408372, feature: 0.00706679, sd: 1.497263 },
     lantern: { rtp: 0.9465319,  hit: 0.43808657, feature: 0.00617912, sd: 1.508113 },
+    forge:   { rtp: 0.94467039, hit: 0.27054881, feature: 0.00502972, sd: 13.283367 },
   };
   for (const id of MACHINE_IDS) MACHINES[id].par = PAR[id];
 
@@ -211,12 +262,14 @@
       for (const w of r.weights) { c += w; r.cum.push(c); }
     }
     if (m.kind === 'lines' || m.kind === 'ways') {
-      // pay table as a flat array by symbol index: payArr[sym*3 + (n-3)]
-      m.payArr = new Int32Array(m.symbols.length * 3);
+      // pay table as a flat array by symbol index: payArr[sym*payN + (n-3)], n = 3..reels
+      m.payN = m.reels.length - 2;
+      m.payArr = new Int32Array(m.symbols.length * m.payN);
       for (const [id, p] of Object.entries(m.pays)) {
         const i = m.symIndex[id];
         if (i == null) throw new Error(m.id + ': pay for unknown symbol ' + id);
-        for (let k = 0; k < 3; k++) m.payArr[i * 3 + k] = p[k];
+        if (p.length !== m.payN) throw new Error(m.id + ': ' + id + ' needs a pay for 3 to ' + m.reels.length + ' reels');
+        for (let k = 0; k < m.payN; k++) m.payArr[i * m.payN + k] = p[k];
       }
     }
     if (m.kind === 'lines') m.lineRows = Int8Array.from(m.lines.flat());
@@ -236,7 +289,10 @@
       for (const p of Object.values(m.pays)) allPays.push(...p);
       allPays.push(...m.scatterPays);
       if (!whole(m.free.mult) || !whole(m.free.spins)) throw new Error(m.id + ': feature must be whole');
-      if (m.reels.length !== 5 || m.rows !== 3) throw new Error(m.id + ': video machines are 5x3');
+      if (m.free.awards && !m.free.awards.every(whole)) throw new Error(m.id + ': free-spin awards must be whole');
+      if (m.free.climb && (!whole(m.free.climb) || !whole(m.free.maxMult) || m.free.maxMult < m.free.mult)) throw new Error(m.id + ': bad climbing multiplier');
+      const shape = m.reels.length + 'x' + m.rows;
+      if (m.kind === 'lines' ? shape !== '5x3' : shape !== '5x3' && shape !== '6x4') throw new Error(m.id + ': lines machines are 5x3; ways machines 5x3 or 6x4');
     }
     for (const r of m.reels) {
       for (const s of r.stops) if (s < 0 || s >= m.symbols.length) throw new Error(m.id + ': bad stop');
@@ -340,11 +396,11 @@
 
   /** Lines: one payline's pay (x line bet). Returns pay; *info gets symbol and count. */
   function linePay(m, g, li, info) {
-    const W = m.wildIdx, S = m.scatterIdx, rows = 3, L = m.lineRows, o = li * 5;
+    const W = m.wildIdx, S = m.scatterIdx, rows = 3, L = m.lineRows, o = li * 5, pn = m.payN;
     // leading wilds (they pay on their own) ...
     let nw = 0;
     while (nw < 5 && g[nw * rows + L[o + nw]] === W) nw++;
-    const wildPay = nw >= 3 ? m.payArr[W * 3 + nw - 3] : 0;
+    const wildPay = nw >= 3 ? m.payArr[W * pn + nw - 3] : 0;
     // ... and the first real symbol, extended by matches and wilds
     let sym = -1, n = 0;
     if (nw < 5) {
@@ -354,28 +410,45 @@
         while (n < 5) { const x = g[n * rows + L[o + n]]; if (x === sym || x === W) n++; else break; }
       }
     }
-    const symPay = sym >= 0 && sym !== S && n >= 3 ? m.payArr[sym * 3 + n - 3] : 0;
+    const symPay = sym >= 0 && sym !== S && n >= 3 ? m.payArr[sym * pn + n - 3] : 0;
     if (info) {
       if (wildPay >= symPay) { info.sym = W; info.n = nw; } else { info.sym = sym; info.n = n; }
     }
     return wildPay >= symPay ? wildPay : symPay;
   }
 
-  /** Ways: total over paying symbols of pay x ways (x bet unit). */
+  /** Bitmask of reels whose wild expands (expanding-wild machines; 0 otherwise). */
+  function expandMask(m, g) {
+    if (!m.expanding) return 0;
+    const W = m.wildIdx, rows = m.rows, nR = m.reels.length;
+    let mask = 0;
+    for (let i = 0; i < nR; i++) for (let j = 0; j < rows; j++) if (g[i * rows + j] === W) { mask |= 1 << i; break; }
+    return mask;
+  }
+  /** Reels (0-based) whose wild expanded on this window, for display. */
+  function expandedReels(m, g) {
+    const mask = expandMask(m, g), out = [];
+    for (let i = 0; i < m.reels.length; i++) if (mask & (1 << i)) out.push(i);
+    return out;
+  }
+
+  /** Ways: total over paying symbols of pay x ways (x bet unit). An expanded reel counts every row for every symbol. */
   function waysPay(m, g, detail) {
-    const W = m.wildIdx, S = m.scatterIdx, rows = 3, nSym = m.symbols.length;
+    const W = m.wildIdx, S = m.scatterIdx, rows = m.rows, nR = m.reels.length, nSym = m.symbols.length, pn = m.payN;
+    const ex = expandMask(m, g);
     let total = 0;
     for (let sym = 0; sym < nSym; sym++) {
       if (sym === W || sym === S) continue;
       let ways = 1, n = 0;
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < nR; i++) {
         let c = 0;
-        for (let j = 0; j < rows; j++) { const x = g[i * rows + j]; if (x === sym || x === W) c++; }
+        if (ex & (1 << i)) c = rows;
+        else for (let j = 0; j < rows; j++) { const x = g[i * rows + j]; if (x === sym || x === W) c++; }
         if (!c) break;
         ways *= c; n++;
       }
       if (n >= 3) {
-        const p = m.payArr[sym * 3 + n - 3] * ways;
+        const p = m.payArr[sym * pn + n - 3] * ways;
         if (p) { total += p; if (detail) detail.push({ sym, n, ways, pay: p }); }
       }
     }
@@ -402,12 +475,18 @@
     let t = 0;
     if (m.kind === 'lines') { for (let li = 0; li < m.lines.length; li++) t += linePay(m, g, li, null); }
     else t = waysPay(m, g, null);
-    return t + m.scatterPays[scatterCount(m, g)] * unitsPerBet(m);
+    return t + scatterPay(m, scatterCount(m, g)) * unitsPerBet(m);
   }
+
+  /** Scatter pay (x total bet) for n scatters. */
+  const scatterPay = (m, n) => m.scatterPays[Math.min(n, m.scatterPays.length - 1)];
 
   /** Free spins this window awards (0 if none). */
   function freeSpinsWon(m, g) {
-    return m.free && scatterCount(m, g) >= m.free.trigger ? m.free.spins : 0;
+    if (!m.free) return 0;
+    const n = scatterCount(m, g);
+    if (n < m.free.trigger) return 0;
+    return m.free.awards ? m.free.awards[Math.min(n, m.free.awards.length - 1)] : m.free.spins;
   }
 
   /**
@@ -429,21 +508,21 @@
           cells: m.lines[li].slice(0, info.n).map((row, reel) => [reel, row]) });
       }
     } else {
-      const d = [];
+      const d = [], rows = m.rows, ex = expandMask(m, g);
       waysPay(m, g, d);
       for (const w of d) {
         const cells = [];
-        for (let i = 0; i < w.n; i++) for (let j = 0; j < 3; j++) {
-          const x = g[i * 3 + j];
-          if (x === w.sym || x === m.wildIdx) cells.push([i, j]);
+        for (let i = 0; i < w.n; i++) for (let j = 0; j < rows; j++) {
+          const x = g[i * rows + j];
+          if ((ex & (1 << i)) || x === w.sym || x === m.wildIdx) cells.push([i, j]);
         }
         out.push({ kind: 'ways', sym: w.sym, n: w.n, ways: w.ways, pay: w.pay, cells });
       }
     }
-    const sc = scatterCount(m, g), sp = m.scatterPays[sc] * unitsPerBet(m);
-    if (sc >= 3) {
-      const cells = [];
-      for (let k = 0; k < g.length; k++) if (g[k] === m.scatterIdx) cells.push([(k / 3) | 0, k % 3]);
+    const sc = scatterCount(m, g), sp = scatterPay(m, sc) * unitsPerBet(m);
+    if (m.free && sc >= m.free.trigger) {
+      const cells = [], rows = m.rows;
+      for (let k = 0; k < g.length; k++) if (g[k] === m.scatterIdx) cells.push([(k / rows) | 0, k % rows]);
       out.push({ kind: 'scatter', sym: m.scatterIdx, n: sc, pay: sp, cells, free: freeSpinsWon(m, g) });
     }
     return out;
@@ -456,7 +535,9 @@
    *
    *   level  bet level (classic: chips; lines: line bet; ways: bet unit)
    *   free   null for a paid spin, or the feature state { left, mult, won, level }
-   *          (a free spin is played at the level that triggered it)
+   *          (a free spin is played at the level that triggered it). On a
+   *          climbing machine, mult rises by free.climb after every winning
+   *          free spin (the spin itself pays at the mult it started with).
    *
    * Returns { stops, grid (plain array), wins, cost, win, free } where cost
    * is chips taken (0 on a free spin), win is chips paid, and `free` is the
@@ -474,13 +555,14 @@
     const ws = wins(m, g).map(w => Object.assign(w, { chips: w.pay * unitChips * mult }));
     const win = payOf(m, g) * unitChips * mult;
     let next = free ? { left: free.left - 1, mult: free.mult, won: free.won + win, level: free.level, total: free.total } : null;
+    if (next && m.free.climb && win > 0) next.mult = Math.min(m.free.maxMult, next.mult + m.free.climb);
     const award = freeSpinsWon(m, g);
     if (award) {
       if (next) { next.left += award; next.total += award; }
       else next = { left: award, mult: m.free.mult, won: 0, level, total: award };
     }
     if (next && next.left <= 0) next = null;
-    return { stops, grid: Array.from(g), wins: ws, cost: free ? 0 : totalBet(m, level), win, award, mult, free: next,
+    return { stops, grid: Array.from(g), wins: ws, cost: free ? 0 : totalBet(m, level), win, award, mult, free: next, expanded: expandedReels(m, g),
              featureWon: free && !next ? free.won + win : null };
   }
 
@@ -493,7 +575,7 @@
   const SLOTS = {
     MACHINES, MACHINE_IDS, PAR, prepare,
     totalBet, betError, betLevels, unitsPerBet,
-    physicalStop, spinStops, windowOf, classicPay, linePay, waysPay, scatterCount,
+    physicalStop, spinStops, windowOf, classicPay, linePay, waysPay, scatterCount, scatterPay, expandMask, expandedReels,
     payOf, freeSpinsWon, wins, play, facts,
   };
 

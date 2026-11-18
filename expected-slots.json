@@ -1,5 +1,5 @@
 {
-  "generated": "2026-11-16T21:02:48.087Z",
+  "generated": "2026-11-18T20:58:30.303Z",
   "machines": {
     "gilded": {
       "name": "Gilded Sevens",
@@ -10,6 +10,7 @@
       "baseReturn": 0.93035888671875,
       "featureReturn": 0,
       "featureChance": 0,
+      "featurePerTrigger": 0,
       "spinsPerFeature": 0,
       "hitFrequency": 0.2911338806152344,
       "sdBase": 4.282082417148811,
@@ -29,6 +30,7 @@
       "baseReturn": 0.7430427574951546,
       "featureReturn": 0.20654901123814656,
       "featureChance": 0.007066789068568604,
+      "featurePerTrigger": 29.228127404683324,
       "spinsPerFeature": 13.111909155453915,
       "hitFrequency": 0.44408372290092507,
       "sdBase": 1.497263413286647,
@@ -48,6 +50,7 @@
       "baseReturn": 0.7120507500345314,
       "featureReturn": 0.23448115277860898,
       "featureChance": 0.006179118140670295,
+      "featurePerTrigger": 37.94734902951266,
       "spinsPerFeature": 10.658607979184735,
       "hitFrequency": 0.43808656633505333,
       "sdBase": 1.5081133791064354,
@@ -56,6 +59,26 @@
         "hit": 0.43808657,
         "feature": 0.00617912,
         "sd": 1.508113
+      }
+    },
+    "forge": {
+      "name": "Obsidian Forge",
+      "kind": "ways",
+      "combinations": 2425365504,
+      "weightedTotal": 2425365504,
+      "rtp": 0.9446703888850403,
+      "baseReturn": 0.7342943618612645,
+      "featureReturn": 0.2103760270237758,
+      "featureChance": 0.005029721079103796,
+      "featurePerTrigger": 41.82657919099979,
+      "spinsPerFeature": 0,
+      "hitFrequency": 0.270548807145894,
+      "sdBase": 13.283367370012197,
+      "suggestedPar": {
+        "rtp": 0.94467039,
+        "hit": 0.27054881,
+        "feature": 0.00502972,
+        "sd": 13.283367
       }
     }
   }

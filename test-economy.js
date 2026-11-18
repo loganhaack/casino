@@ -179,8 +179,13 @@ check('Quest Rush doubles quest chips', [ECON.questReward(1, dateOnWeekday(1, 9)
 {
   const a = ECON.dailyQuests('2026-11-12', 2), b = ECON.dailyQuests('2026-11-12', 2);
   check('quests are deterministic for a day and tier', a, b);
-  check('three distinct quests', new Set(a.map(q => q.id)).size, 3);
-  ok('targets match the tier', a.every(q => q.target === ECON.QUESTS.find(d => d.id === q.id).n[2]));
+  check('three distinct quests plus the challenge', [new Set(a.map(q => q.id)).size, a.filter(ECON.isHard).length, ECON.isHard(a[3])], [4, 1, true]);
+  ok('targets match the tier', a.every(q => q.target === ECON.QUESTS.concat(ECON.CHALLENGES).find(d => d.id === q.id).n[2]));
+  // The challenge has its own seed: the three normal quests are what they were before it existed.
+  ok('challenge did not change the normal three', JSON.stringify(a.slice(0, 3).map(q => q.id)) === '["ppWins","bjWins","bjStreak"]');
+  check('challenge pays 5x chips, 3x XP (Quest Rush doubles it too)',
+    [ECON.questReward(0, dateOnWeekday(2, 9), a[3]).chips, ECON.questReward(0, dateOnWeekday(2, 9), a[3]).xp, ECON.questReward(0, dateOnWeekday(1, 9), a[3]).chips],
+    [500, 300, 1000]);
   let differ = 0;
   for (let i = 1; i <= 28; i++) {
     const day = `2026-02-${String(i).padStart(2, '0')}`;
@@ -189,7 +194,7 @@ check('Quest Rush doubles quest chips', [ECON.questReward(1, dateOnWeekday(1, 9)
   ok('quests vary from day to day', differ > 20);
   const usage = {};
   for (let i = 0; i < 2000; i++) for (const q of ECON.dailyQuests('d' + i, i % 5)) usage[q.id] = (usage[q.id] || 0) + 1;
-  check('every quest type shows up', Object.keys(usage).length, ECON.QUESTS.length);
+  check('every quest type and challenge shows up', Object.keys(usage).length, ECON.QUESTS.length + ECON.CHALLENGES.length);
 }
 {
   const q = { id: 'bjStreak', target: 3, progress: 0, done: false };
