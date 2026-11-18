@@ -5,8 +5,9 @@ Context for Claude Code working in this repo.
 ## What this is
 
 A play-chip casino game (no real money, ever) built so that its odds are
-verifiable rather than trusted. Three Card Poker, Blackjack and Free Bet
-Blackjack (with 21+3 and Perfect Pairs side bets), three slot machines, the
+verifiable rather than trusted. Three Card Poker, Blackjack (with 21+3 and
+Perfect Pairs side bets), Free Bet Blackjack (with Pot of Gold), roulette,
+three slot machines, the
 economy (`economy.js`) and Supabase accounts with server-side play are done.
 
 The origin of the project: social casino apps are unregulated and have every
@@ -238,7 +239,7 @@ weekly event calendar, daily quests, and the cosmetics shop.
   the dealer's three cards are null in the page until the hand is over. An
   Online/Offline button under the chips switches. Display stats/bets persist
   under `casino.online.v1`.
-- Online: every game (Blackjack, Free Bet, Three Card Poker, slots), XP (incl.
+- Online: every game (Blackjack, Free Bet, Three Card Poker, slots, roulette), XP (incl.
   Double XP), quests + claiming, event promos, both wheels, vault + interest,
   shop + equip. Every server request first catches the day up
   (`ensureQuests`, `accrueVault`).
@@ -323,11 +324,12 @@ Table limit is per bet; table minimum is 5 chips a spin.
 - The `leaderboard` op returns every online player as a public card: display
   name, avatar, level/tier, title, equipped cosmetics, worth (chips + vault),
   this week's game net (bet + payout rows since Monday 00:00 ET,
-  all-time gains / losses / net (rounds grouped by ref; v2 migration
-  `20261117000002_leaderboard_alltime.sql`, which replaces v1),
-  `ECON.weekStart`), best single round (bet + payout grouped by ref; a
-  jackpot is its own ref) and jackpots. Computed by the SQL function
-  `leaderboard()` (migration `20261117000001_leaderboard.sql`) from tables
+  `ECON.weekStart`), all-time gains / losses / net (gross sums of winning
+  and losing rounds, rounds grouped by ref), best single round (bet +
+  payout grouped by ref; a jackpot is its own ref) and jackpots. Computed
+  by the SQL function `leaderboard()` (migration
+  `20261117000002_leaderboard_alltime.sql`, which replaces v1
+  `20261117000001_leaderboard.sql`) from tables
   only the server writes. Never a user id; `mine` marks the caller.
   Without the migration the board is null and the page says so.
 - Grants (wheels, quests, promos, interest) and the shop are not "winnings":
